@@ -79,6 +79,7 @@ interface SessionInfo {
 
 import { LiveSessions } from "@/components/LiveSessions"
 import { TeamsList } from "@/components/TeamsList"
+import { GitBranchPanel } from "@/components/GitBranchPanel"
 
 // ── Props ──────────────────────────────────────────────────────────────────
 
@@ -90,8 +91,8 @@ interface SessionBrowserProps {
     session: ParsedSession,
     source: { dirName: string; fileName: string; rawText: string }
   ) => void
-  sidebarTab: "browse" | "teams"
-  onSidebarTabChange: (tab: "browse" | "teams") => void
+  sidebarTab: "browse" | "git" | "teams"
+  onSidebarTabChange: (tab: "browse" | "git" | "teams") => void
   onSelectTeam?: (teamName: string) => void
   /** Create a new Claude session in the given project */
   onNewSession?: (dirName: string) => void
@@ -105,6 +106,8 @@ interface SessionBrowserProps {
   onDuplicateSession?: (dirName: string, fileName: string) => void
   /** Delete a session file */
   onDeleteSession?: (dirName: string, fileName: string) => void
+  /** Current project dirName for git status */
+  currentDirName?: string | null
 }
 
 // ── Main Component ─────────────────────────────────────────────────────────
@@ -124,6 +127,7 @@ export const SessionBrowser = memo(function SessionBrowser({
   teamsOnly,
   onDuplicateSession,
   onDeleteSession,
+  currentDirName,
 }: SessionBrowserProps) {
   const [view, setView] = useState<View>(session ? "detail" : "projects")
   const [projects, setProjects] = useState<ProjectInfo[]>([])
@@ -134,6 +138,8 @@ export const SessionBrowser = memo(function SessionBrowser({
   const [isLoading, setIsLoading] = useState(false)
   const [searchFilter, setSearchFilter] = useState("")
   const [fetchError, setFetchError] = useState<string | null>(null)
+
+  const gitDefaultDirName = currentDirName ?? selectedProject?.dirName ?? null
 
   // Load projects on mount
   useEffect(() => {
@@ -305,7 +311,7 @@ export const SessionBrowser = memo(function SessionBrowser({
         />
       </div>
 
-      {/* ── Bottom: Browse / Teams ── */}
+      {/* ── Bottom: Browse / Git / Teams ── */}
       <div className="flex min-h-0 flex-[45_1_0%] flex-col overflow-hidden border-t border-border/50">
         {/* Tab bar */}
         <div className="flex shrink-0 border-b border-border/50" role="tablist">
@@ -322,6 +328,21 @@ export const SessionBrowser = memo(function SessionBrowser({
             )}
           >
             Browse
+          </button>
+          <button
+            role="tab"
+            aria-selected={sidebarTab === "git"}
+            onClick={() => onSidebarTabChange("git")}
+            className={cn(
+              "flex-1 text-xs font-medium transition-colors border-b-2 flex items-center justify-center gap-1.5",
+              isMobile ? "py-3" : "py-2",
+              sidebarTab === "git"
+                ? "border-blue-500 text-foreground"
+                : "border-transparent text-muted-foreground hover:text-muted-foreground"
+            )}
+          >
+            <GitBranch className="size-3" />
+            Git
           </button>
           <button
             role="tab"
@@ -486,6 +507,11 @@ export const SessionBrowser = memo(function SessionBrowser({
             </div>
           </div>
         )}
+
+        {/* Git tab — keep mounted to preserve selection across tab switches */}
+        <div className={cn("flex-1 min-h-0", sidebarTab !== "git" && "hidden")}>
+          <GitBranchPanel defaultDirName={gitDefaultDirName} />
+        </div>
 
         {/* Teams tab */}
         {sidebarTab === "teams" && (
