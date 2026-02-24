@@ -3,6 +3,7 @@ import {
   Search,
   ChevronsDownUp,
   ChevronsUpDown,
+  ArrowDown,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -171,6 +172,16 @@ export function ChatArea({
             canScrollDown ? "opacity-100" : "opacity-0"
           )}
         />
+        {/* Scroll to bottom button */}
+        {canScrollDown && (
+          <button
+            onClick={() => scrollEndRef.current?.scrollIntoView({ behavior: "smooth" })}
+            className="absolute left-1/2 -translate-x-1/2 bottom-3 z-20 flex items-center justify-center w-8 h-8 rounded-full bg-elevation-3 border border-border/60 text-muted-foreground hover:text-foreground hover:bg-elevation-2 shadow-md transition-all"
+            aria-label="Scroll to bottom"
+          >
+            <ArrowDown className="size-4" />
+          </button>
+        )}
       </div>
     </div>
   )

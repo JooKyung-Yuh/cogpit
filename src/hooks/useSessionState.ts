@@ -3,6 +3,8 @@ import type { ParsedSession } from "@/lib/types"
 import type { SessionSource } from "@/hooks/useLiveSession"
 import type { MobileTab } from "@/components/MobileNav"
 
+export type AppMode = "agent" | "team"
+
 export interface SessionState {
   session: ParsedSession | null
   sessionSource: SessionSource | null
@@ -20,6 +22,8 @@ export interface SessionState {
   sidebarTab: "browse" | "teams"
   mobileTab: MobileTab
   dashboardProject: string | null
+  /** Top-level app mode: agent (single session) or team (multi-agent orchestra) */
+  appMode: AppMode
 }
 
 export type SessionAction =
@@ -43,6 +47,7 @@ export type SessionAction =
   | { type: "SET_DASHBOARD_PROJECT"; dirName: string | null }
   | { type: "INIT_PENDING_SESSION"; dirName: string; isMobile: boolean }
   | { type: "FINALIZE_SESSION"; session: ParsedSession; source: SessionSource; isMobile: boolean }
+  | { type: "SET_APP_MODE"; mode: AppMode }
 
 const initialState: SessionState = {
   session: null,
@@ -60,6 +65,7 @@ const initialState: SessionState = {
   sidebarTab: "browse",
   mobileTab: "sessions",
   dashboardProject: null,
+  appMode: "agent",
 }
 
 function sessionReducer(state: SessionState, action: SessionAction): SessionState {
@@ -205,6 +211,10 @@ function sessionReducer(state: SessionState, action: SessionAction): SessionStat
     case "SET_DASHBOARD_PROJECT":
       if (state.dashboardProject === action.dirName) return state
       return { ...state, dashboardProject: action.dirName }
+
+    case "SET_APP_MODE":
+      if (state.appMode === action.mode) return state
+      return { ...state, appMode: action.mode }
 
     case "INIT_PENDING_SESSION":
       return {

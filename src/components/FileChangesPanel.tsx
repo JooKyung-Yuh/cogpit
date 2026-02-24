@@ -1,5 +1,5 @@
 import { useMemo, useState, useRef, useCallback, useEffect, memo } from "react"
-import { FileCode2, CheckCircle, XCircle, ChevronDown, ChevronRight, Trash2, Code2, GitCompareArrows, ChevronsDownUp, ChevronsUpDown } from "lucide-react"
+import { FileCode2, CheckCircle, XCircle, ChevronDown, ChevronRight, Trash2, Code2, GitCompareArrows, ChevronsDownUp, ChevronsUpDown, ArrowDown } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
 import { EditDiffView } from "./timeline/EditDiffView"
@@ -581,6 +581,16 @@ export const FileChangesPanel = memo(function FileChangesPanel({ session, sessio
             canScrollDown ? "opacity-100" : "opacity-0"
           )}
         />
+        {/* Scroll to bottom button */}
+        {canScrollDown && (
+          <button
+            onClick={() => bottomRef.current?.scrollIntoView({ behavior: "smooth" })}
+            className="absolute left-1/2 -translate-x-1/2 bottom-3 z-20 flex items-center justify-center w-8 h-8 rounded-full bg-elevation-3 border border-border/60 text-muted-foreground hover:text-foreground hover:bg-elevation-2 shadow-md transition-all"
+            aria-label="Scroll to bottom"
+          >
+            <ArrowDown className="size-4" />
+          </button>
+        )}
       </div>
     </div>
   )
