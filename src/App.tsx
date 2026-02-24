@@ -773,12 +773,14 @@ export default function App() {
         killing={killing}
         networkUrl={config.networkUrl}
         networkAccessDisabled={config.networkAccessDisabled}
+        appMode={state.appMode}
         onGoHome={actions.handleGoHome}
         onToggleSidebar={handleToggleSidebar}
         onToggleStats={() => setShowStats(!showStats)}
         onToggleWorktrees={() => setShowWorktrees((p) => !p)}
         onKillAll={handleKillAll}
         onOpenSettings={config.openConfigDialog}
+        onSetAppMode={(mode) => dispatch({ type: "SET_APP_MODE", mode })}
       />
 
       <div className="flex flex-1 min-h-0 overflow-hidden">

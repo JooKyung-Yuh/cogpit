@@ -12,7 +12,10 @@ import {
   Globe,
   WifiOff,
   GitBranch,
+  Bot,
+  Users,
 } from "lucide-react"
+import type { AppMode } from "@/hooks/useSessionState"
 import { Button } from "@/components/ui/button"
 import {
   Tooltip,
@@ -32,12 +35,14 @@ interface DesktopHeaderProps {
   killing: boolean
   networkUrl: string | null
   networkAccessDisabled: boolean
+  appMode: AppMode
   onGoHome: () => void
   onToggleSidebar: () => void
   onToggleStats: () => void
   onToggleWorktrees?: () => void
   onKillAll: () => void
   onOpenSettings: () => void
+  onSetAppMode: (mode: AppMode) => void
 }
 
 export function DesktopHeader({
@@ -49,12 +54,14 @@ export function DesktopHeader({
   killing,
   networkUrl,
   networkAccessDisabled,
+  appMode,
   onGoHome,
   onToggleSidebar,
   onToggleStats,
   onToggleWorktrees,
   onKillAll,
   onOpenSettings,
+  onSetAppMode,
 }: DesktopHeaderProps) {
   const [copied, setCopied] = useState(false)
   const [urlCopied, setUrlCopied] = useState(false)
@@ -146,6 +153,36 @@ export function DesktopHeader({
         ) : (
           <h1 className="text-sm font-semibold tracking-tight">Cogpit</h1>
         )}
+      </div>
+
+      <div className="flex-1" />
+
+      {/* Mode toggle — center of header */}
+      <div className="flex items-center gap-0.5 rounded-lg bg-elevation-1 border border-border/40 p-0.5">
+        <button
+          onClick={() => onSetAppMode("agent")}
+          className={cn(
+            "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all",
+            appMode === "agent"
+              ? "bg-elevation-3 text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <Bot className="size-3" />
+          Agent
+        </button>
+        <button
+          onClick={() => onSetAppMode("team")}
+          className={cn(
+            "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all",
+            appMode === "team"
+              ? "bg-elevation-3 text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <Users className="size-3" />
+          Team
+        </button>
       </div>
 
       <div className="flex-1" />
