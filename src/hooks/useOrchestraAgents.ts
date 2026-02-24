@@ -19,9 +19,15 @@ export interface AgentOutput {
   lines: string[]
 }
 
+export interface AgentRoute {
+  sourceId: string
+  targetId: string
+}
+
 export function useOrchestraAgents() {
   const [agents, setAgents] = useState<OrchestraAgent[]>([])
   const [outputs, setOutputs] = useState<Record<string, string[]>>({})
+  const [routes, setRoutes] = useState<AgentRoute[]>([])
   const [loading, setLoading] = useState(false)
   const eventSourceRef = useRef<EventSource | null>(null)
 
@@ -32,6 +38,19 @@ export function useOrchestraAgents() {
       if (res.ok) {
         const list = await res.json()
         setAgents(list)
+      }
+    } catch {
+      // ignore
+    }
+  }, [])
+
+  // Fetch routing rules
+  const fetchRoutes = useCallback(async () => {
+    try {
+      const res = await authFetch("/api/orchestra/routes")
+      if (res.ok) {
+        const list: AgentRoute[] = await res.json()
+        setRoutes(list)
       }
     } catch {
       // ignore
@@ -110,6 +129,43 @@ export function useOrchestraAgents() {
       delete next[agentId]
       return next
     })
+    // Clean up routes involving this agent
+    setRoutes((prev) => prev.filter((r) => r.sourceId !== agentId && r.targetId !== agentId))
+  }, [])
+
+  // Add a routing rule (source output → target input)
+  const addRoute = useCallback(async (sourceId: string, targetId: string) => {
+    try {
+      const res = await authFetch("/api/orchestra/route", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceId, targetId, action: "add" }),
+      })
+      if (res.ok) {
+        setRoutes((prev) => {
+          if (prev.some((r) => r.sourceId === sourceId && r.targetId === targetId)) return prev
+          return [...prev, { sourceId, targetId }]
+        })
+      }
+    } catch {
+      // ignore
+    }
+  }, [])
+
+  // Remove a routing rule
+  const removeRoute = useCallback(async (sourceId: string, targetId: string) => {
+    try {
+      const res = await authFetch("/api/orchestra/route", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceId, targetId, action: "remove" }),
+      })
+      if (res.ok) {
+        setRoutes((prev) => prev.filter((r) => !(r.sourceId === sourceId && r.targetId === targetId)))
+      }
+    } catch {
+      // ignore
+    }
   }, [])
 
   // SSE stream for real-time updates
@@ -127,6 +183,8 @@ export function useOrchestraAgents() {
           setAgents((prev) =>
             prev.map((a) => (a.id === data.agentId ? { ...a, status: data.status } : a))
           )
+        } else if (data.type === "routed") {
+          // Could show a toast or indicator — for now just tracked via routes state
         }
       } catch {
         // ignore parse errors
@@ -134,21 +192,28 @@ export function useOrchestraAgents() {
     }
 
     eventSourceRef.current = es
+
+    // Fetch initial routes
+    fetchRoutes()
+
     return () => {
       es.close()
       eventSourceRef.current = null
     }
-  }, [])
+  }, [fetchRoutes])
 
   return {
     agents,
     outputs,
+    routes,
     loading,
     spawnAgent,
     sendMessage,
     getOutput,
     killAgent,
     removeAgent,
+    addRoute,
+    removeRoute,
     refreshAgents: fetchAgents,
   }
 }

@@ -809,6 +809,7 @@ export default function App() {
             <OrchestraPanel
               agents={orchestra.agents}
               outputs={orchestra.outputs}
+              routes={orchestra.routes}
               loading={orchestra.loading}
               defaultProjectPath={
                 state.session?.cwd
@@ -820,6 +821,8 @@ export default function App() {
               onSend={orchestra.sendMessage}
               onKill={orchestra.killAgent}
               onRemove={orchestra.removeAgent}
+              onAddRoute={orchestra.addRoute}
+              onRemoveRoute={orchestra.removeRoute}
             />
           ) : state.mainView === "teams" && state.selectedTeam ? (
             <TeamsDashboard

@@ -11,6 +11,9 @@ import {
   Circle,
   User,
   ArrowDown,
+  ArrowRight,
+  Link,
+  Unlink,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -20,7 +23,7 @@ import {
   TooltipContent,
 } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
-import type { OrchestraAgent, AgentType } from "@/hooks/useOrchestraAgents"
+import type { OrchestraAgent, AgentType, AgentRoute } from "@/hooks/useOrchestraAgents"
 
 // ── Agent type metadata ───────────────────────────────────────────────────
 
@@ -237,9 +240,17 @@ function UserMessageBubble({ msg }: { msg: SentMessage }) {
 const AgentOutputBlock = memo(function AgentOutputBlock({
   agent,
   lines,
+  allAgents,
+  routeTargets,
+  onAddRoute,
+  onRemoveRoute,
 }: {
   agent: OrchestraAgent
   lines: string[]
+  allAgents: OrchestraAgent[]
+  routeTargets: string[]
+  onAddRoute: (sourceId: string, targetId: string) => void
+  onRemoveRoute: (sourceId: string, targetId: string) => void
 }) {
   const [collapsed, setCollapsed] = useState(false)
   const meta = AGENT_META[agent.type]
@@ -279,6 +290,58 @@ const AgentOutputBlock = memo(function AgentOutputBlock({
           )}
         </div>
 
+        {/* Route indicators */}
+        {routeTargets.length > 0 && (
+          <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+            {routeTargets.map((targetId) => {
+              const target = allAgents.find((a) => a.id === targetId)
+              if (!target) return null
+              const targetMeta = AGENT_META[target.type]
+              return (
+                <button
+                  key={targetId}
+                  onClick={() => onRemoveRoute(agent.id, targetId)}
+                  className="flex items-center gap-1 rounded-full px-2 py-0.5 bg-indigo-500/10 border border-indigo-500/20 text-[10px] text-indigo-400 hover:bg-indigo-500/20 transition-colors group"
+                >
+                  <ArrowRight className="size-2.5" />
+                  <span className={targetMeta.color}>{target.name}</span>
+                  <Unlink className="size-2.5 opacity-0 group-hover:opacity-100 text-red-400" />
+                </button>
+              )
+            })}
+          </div>
+        )}
+
+        {/* Route-to dropdown */}
+        {agent.status === "running" && allAgents.filter((a) => a.id !== agent.id && a.status === "running").length > 0 && (
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex items-center gap-1">
+                  <Link className="size-3 text-muted-foreground" />
+                  <select
+                    className="rounded-md border border-border/40 bg-elevation-1 px-1.5 py-0.5 text-[10px] text-muted-foreground focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
+                    value=""
+                    onChange={(e) => {
+                      if (e.target.value) onAddRoute(agent.id, e.target.value)
+                      e.target.value = ""
+                    }}
+                  >
+                    <option value="">Route output to...</option>
+                    {allAgents
+                      .filter((a) => a.id !== agent.id && a.status === "running" && !routeTargets.includes(a.id))
+                      .map((a) => (
+                        <option key={a.id} value={a.id}>{a.name}</option>
+                      ))
+                    }
+                  </select>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>Auto-forward new output to another agent</TooltipContent>
+            </Tooltip>
+          </div>
+        )}
+
         {/* Terminal output */}
         {!collapsed && lines.length > 0 && (
           <div
@@ -310,23 +373,29 @@ const AgentOutputBlock = memo(function AgentOutputBlock({
 interface OrchestraPanelProps {
   agents: OrchestraAgent[]
   outputs: Record<string, string[]>
+  routes: AgentRoute[]
   loading: boolean
   defaultProjectPath?: string
   onSpawn: (type: AgentType, projectPath: string, name: string, role: string) => void
   onSend: (agentId: string, message: string) => void
   onKill: (agentId: string) => void
   onRemove: (agentId: string) => void
+  onAddRoute: (sourceId: string, targetId: string) => void
+  onRemoveRoute: (sourceId: string, targetId: string) => void
 }
 
 export function OrchestraPanel({
   agents,
   outputs,
+  routes,
   loading,
   defaultProjectPath,
   onSpawn,
   onSend,
   onKill,
   onRemove,
+  onAddRoute,
+  onRemoveRoute,
 }: OrchestraPanelProps) {
   const [showSpawn, setShowSpawn] = useState(false)
   const [sentMessages, setSentMessages] = useState<SentMessage[]>([])
@@ -467,7 +536,14 @@ export function OrchestraPanel({
                   ))}
 
                   {/* Agent output */}
-                  <AgentOutputBlock agent={agent} lines={agentOutput} />
+                  <AgentOutputBlock
+                    agent={agent}
+                    lines={agentOutput}
+                    allAgents={agents}
+                    routeTargets={routes.filter((r) => r.sourceId === agent.id).map((r) => r.targetId)}
+                    onAddRoute={onAddRoute}
+                    onRemoveRoute={onRemoveRoute}
+                  />
                 </div>
               )
             })}

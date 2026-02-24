@@ -25,9 +25,15 @@ export interface OrchestraAgent {
   outputBuffer: string[]
 }
 
-// ── In-memory agent store ─────────────────────────────────────────────────
+// ── In-memory stores ──────────────────────────────────────────────────────
 
 const agents = new Map<string, OrchestraAgent>()
+
+/** Routing rules: sourceAgentId → Set of targetAgentIds */
+const routes = new Map<string, Set<string>>()
+
+/** Previous output snapshot per agent (for diffing) */
+const prevOutput = new Map<string, string[]>()
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -59,6 +65,24 @@ function captureOutput(tmuxSession: string): string[] {
   } catch {
     return []
   }
+}
+
+/** Diff two snapshots and return only lines that are new */
+function diffLines(prev: string[], current: string[]): string[] {
+  if (prev.length === 0) return current
+  // Find where old snapshot ends in new snapshot
+  const lastOld = prev[prev.length - 1]
+  const idx = current.lastIndexOf(lastOld)
+  if (idx === -1 || idx === current.length - 1) return []
+  return current.slice(idx + 1)
+}
+
+/** Send text to a tmux session */
+function sendToAgent(agent: OrchestraAgent, text: string) {
+  if (!tmuxSessionExists(agent.tmuxSession)) return
+  spawn("tmux", ["send-keys", "-t", agent.tmuxSession, text, "Enter"], {
+    stdio: "ignore",
+  })
 }
 
 function buildSpawnCommand(type: AgentType, projectPath: string): string {
@@ -297,6 +321,69 @@ export function registerOrchestraRoutes(use: UseFn) {
     }
   })
 
+  // GET /api/orchestra/routes — list all routing rules
+  use("/api/orchestra/routes", (req, res, next) => {
+    if (req.method !== "GET") return next()
+    const result: Array<{ sourceId: string; targetId: string }> = []
+    for (const [sourceId, targets] of routes.entries()) {
+      for (const targetId of targets) {
+        result.push({ sourceId, targetId })
+      }
+    }
+    res.setHeader("Content-Type", "application/json")
+    res.end(JSON.stringify(result))
+  })
+
+  // POST /api/orchestra/route — add or remove a routing rule
+  use("/api/orchestra/route", async (req, res, next) => {
+    if (req.method !== "POST") return next()
+    try {
+      const body = await parseBody(req)
+      const sourceId = body.sourceId as string
+      const targetId = body.targetId as string
+      const action = (body.action as string) || "add"
+
+      if (!sourceId || !targetId) {
+        res.statusCode = 400
+        res.end(JSON.stringify({ error: "sourceId and targetId are required" }))
+        return
+      }
+      if (sourceId === targetId) {
+        res.statusCode = 400
+        res.end(JSON.stringify({ error: "Cannot route an agent to itself" }))
+        return
+      }
+      if (!agents.has(sourceId) || !agents.has(targetId)) {
+        res.statusCode = 404
+        res.end(JSON.stringify({ error: "Source or target agent not found" }))
+        return
+      }
+
+      if (action === "remove") {
+        const set = routes.get(sourceId)
+        if (set) {
+          set.delete(targetId)
+          if (set.size === 0) routes.delete(sourceId)
+        }
+      } else {
+        let set = routes.get(sourceId)
+        if (!set) {
+          set = new Set()
+          routes.set(sourceId, set)
+        }
+        set.add(targetId)
+      }
+
+      // Return updated routes for this source
+      const targets = routes.get(sourceId)
+      res.setHeader("Content-Type", "application/json")
+      res.end(JSON.stringify({ sourceId, targets: targets ? Array.from(targets) : [] }))
+    } catch (err) {
+      res.statusCode = 500
+      res.end(JSON.stringify({ error: String(err) }))
+    }
+  })
+
   // GET /api/orchestra/stream — SSE stream of agent outputs (all agents)
   use("/api/orchestra/stream", (req, res, next) => {
     if (req.method !== "GET") return next()
@@ -326,6 +413,25 @@ export function registerOrchestraRoutes(use: UseFn) {
           }
           const lines = captureOutput(agent.tmuxSession)
           if (lines.length > 0) {
+            // Auto-forward new output to routed targets
+            const prev = prevOutput.get(agent.id) ?? []
+            const newLines = diffLines(prev, lines)
+            prevOutput.set(agent.id, lines)
+
+            if (newLines.length > 0) {
+              const targets = routes.get(agent.id)
+              if (targets) {
+                const combined = newLines.join("\n")
+                for (const targetId of targets) {
+                  const target = agents.get(targetId)
+                  if (target && target.status === "running") {
+                    sendToAgent(target, `[From ${agent.name}]: ${combined}`)
+                    res.write(`data: ${JSON.stringify({ type: "routed", sourceId: agent.id, targetId, lineCount: newLines.length })}\n\n`)
+                  }
+                }
+              }
+            }
+
             res.write(`data: ${JSON.stringify({ type: "output", agentId: agent.id, lines })}\n\n`)
           }
         }
