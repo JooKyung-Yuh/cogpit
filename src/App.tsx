@@ -24,6 +24,7 @@ import { SessionInfoBar } from "@/components/SessionInfoBar"
 import { ChatArea } from "@/components/ChatArea"
 import { PendingTurnPreview } from "@/components/PendingTurnPreview"
 import { TodoProgressPanel } from "@/components/TodoProgressPanel"
+import { OrchestraPanel } from "@/components/OrchestraPanel"
 import { useLiveSession } from "@/hooks/useLiveSession"
 import { useSessionTeam } from "@/hooks/useSessionTeam"
 import { usePtyChat } from "@/hooks/usePtyChat"
@@ -43,6 +44,7 @@ import { useNewSession } from "@/hooks/useNewSession"
 import { useWorktrees } from "@/hooks/useWorktrees"
 import { useKillAll } from "@/hooks/useKillAll"
 import { useTodoProgress } from "@/hooks/useTodoProgress"
+import { useOrchestraAgents } from "@/hooks/useOrchestraAgents"
 import { parseSession, detectPendingInteraction } from "@/lib/parser"
 import { dirNameToPath, shortPath } from "@/lib/format"
 import type { ParsedSession } from "@/lib/types"
@@ -61,6 +63,9 @@ export default function App() {
   const isMobile = useIsMobile()
   const themeCtx = useTheme()
   const [state, dispatch] = useSessionState()
+
+  // Orchestra (multi-agent) — only active in team mode
+  const orchestra = useOrchestraAgents()
 
   // Local UI state
   const [showSidebar, setShowSidebar] = useState(true)
@@ -800,7 +805,19 @@ export default function App() {
         )}
 
         <main className="relative flex-1 min-w-0 overflow-hidden flex flex-col">
-          {state.mainView === "teams" && state.selectedTeam ? (
+          {state.appMode === "team" ? (
+            <OrchestraPanel
+              agents={orchestra.agents}
+              outputs={orchestra.outputs}
+              loading={orchestra.loading}
+              onSpawn={(type, projectPath, name, role) =>
+                orchestra.spawnAgent({ type, projectPath, name, role })
+              }
+              onSend={orchestra.sendMessage}
+              onKill={orchestra.killAgent}
+              onRemove={orchestra.removeAgent}
+            />
+          ) : state.mainView === "teams" && state.selectedTeam ? (
             <TeamsDashboard
               teamName={state.selectedTeam}
               onBack={actions.handleBackFromTeam}
