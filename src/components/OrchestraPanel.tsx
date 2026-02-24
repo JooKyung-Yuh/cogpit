@@ -39,13 +39,14 @@ const STATUS_INDICATOR: Record<string, { color: string; label: string }> = {
 // ── Spawn Dialog ──────────────────────────────────────────────────────────
 
 interface SpawnDialogProps {
+  defaultProjectPath?: string
   onSpawn: (type: AgentType, projectPath: string, name: string, role: string) => void
   onCancel: () => void
 }
 
-function SpawnDialog({ onSpawn, onCancel }: SpawnDialogProps) {
+function SpawnDialog({ defaultProjectPath, onSpawn, onCancel }: SpawnDialogProps) {
   const [type, setType] = useState<AgentType>("claude")
-  const [projectPath, setProjectPath] = useState("")
+  const [projectPath, setProjectPath] = useState(defaultProjectPath ?? "")
   const [name, setName] = useState("")
   const [role, setRole] = useState("general")
   const inputRef = useRef<HTMLInputElement>(null)
@@ -264,6 +265,7 @@ interface OrchestraPanelProps {
   agents: OrchestraAgent[]
   outputs: Record<string, string[]>
   loading: boolean
+  defaultProjectPath?: string
   onSpawn: (type: AgentType, projectPath: string, name: string, role: string) => void
   onSend: (agentId: string, message: string) => void
   onKill: (agentId: string) => void
@@ -274,6 +276,7 @@ export function OrchestraPanel({
   agents,
   outputs,
   loading,
+  defaultProjectPath,
   onSpawn,
   onSend,
   onKill,
@@ -317,7 +320,7 @@ export function OrchestraPanel({
         <div className="p-4 space-y-3">
           {/* Spawn dialog */}
           {showSpawn && (
-            <SpawnDialog onSpawn={handleSpawn} onCancel={() => setShowSpawn(false)} />
+            <SpawnDialog defaultProjectPath={defaultProjectPath} onSpawn={handleSpawn} onCancel={() => setShowSpawn(false)} />
           )}
 
           {/* Agent cards */}

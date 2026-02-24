@@ -810,6 +810,10 @@ export default function App() {
               agents={orchestra.agents}
               outputs={orchestra.outputs}
               loading={orchestra.loading}
+              defaultProjectPath={
+                state.session?.cwd
+                ?? (currentDirName ? dirNameToPath(currentDirName) : "")
+              }
               onSpawn={(type, projectPath, name, role) =>
                 orchestra.spawnAgent({ type, projectPath, name, role })
               }
