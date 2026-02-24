@@ -1,8 +1,7 @@
 import { memo } from "react"
 import { Cog } from "lucide-react"
 import ReactMarkdown from "react-markdown"
-import remarkGfm from "remark-gfm"
-import { MarkdownCodeBlock } from "./MarkdownCodeBlock"
+import { markdownComponents, REMARK_PLUGINS } from "./markdownComponents"
 import { Badge } from "@/components/ui/badge"
 import {
   Tooltip,
@@ -80,8 +79,8 @@ export const AssistantText = memo(function AssistantText({
             </span>
           )}
         </div>
-        <div className="prose dark:prose-invert prose-sm max-w-none text-foreground break-words overflow-hidden [&_pre]:bg-elevation-1 [&_pre]:rounded [&_pre]:p-2 [&_pre]:overflow-x-auto [&_code]:text-foreground [&_code]:bg-elevation-1 [&_code]:px-1 [&_code]:rounded [&_a]:text-blue-400 [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm">
-          <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ code: MarkdownCodeBlock }}>{text}</ReactMarkdown>
+        <div className="max-w-none text-sm break-words overflow-hidden">
+          <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={markdownComponents}>{text}</ReactMarkdown>
         </div>
       </div>
     </div>

@@ -1,29 +1,121 @@
-import { useState, useEffect, type HTMLAttributes } from "react"
+import { useState, useEffect, useCallback, type HTMLAttributes } from "react"
+import { Check, Copy, ChevronDown, ChevronRight } from "lucide-react"
 import { highlightCode } from "@/lib/shiki"
-import { cn } from "@/lib/utils"
+import { useIsDarkMode } from "@/hooks/useIsDarkMode"
 
-// ── Dark mode detection (reactive via MutationObserver) ─────────────────────
+// ── Language display name mapping ───────────────────────────────────────────
 
-function useIsDarkMode() {
-  const [isDark, setIsDark] = useState(
-    () => typeof document !== "undefined" && document.documentElement.classList.contains("dark")
-  )
-  useEffect(() => {
-    const el = document.documentElement
-    const update = () => setIsDark(el.classList.contains("dark"))
-    const obs = new MutationObserver(update)
-    obs.observe(el, { attributes: true, attributeFilter: ["class"] })
-    return () => obs.disconnect()
-  }, [])
-  return isDark
+const LANG_DISPLAY: Record<string, string> = {
+  js: "JavaScript",
+  jsx: "JSX",
+  ts: "TypeScript",
+  tsx: "TSX",
+  py: "Python",
+  rb: "Ruby",
+  rs: "Rust",
+  go: "Go",
+  java: "Java",
+  kt: "Kotlin",
+  swift: "Swift",
+  cs: "C#",
+  cpp: "C++",
+  c: "C",
+  sh: "Shell",
+  bash: "Bash",
+  zsh: "Zsh",
+  fish: "Fish",
+  ps1: "PowerShell",
+  powershell: "PowerShell",
+  sql: "SQL",
+  graphql: "GraphQL",
+  html: "HTML",
+  css: "CSS",
+  scss: "SCSS",
+  less: "LESS",
+  json: "JSON",
+  yaml: "YAML",
+  yml: "YAML",
+  toml: "TOML",
+  xml: "XML",
+  md: "Markdown",
+  markdown: "Markdown",
+  dockerfile: "Dockerfile",
+  docker: "Docker",
+  makefile: "Makefile",
+  cmake: "CMake",
+  lua: "Lua",
+  vim: "Vim",
+  diff: "Diff",
+  plaintext: "Text",
+  text: "Text",
+  txt: "Text",
+  php: "PHP",
+  perl: "Perl",
+  r: "R",
+  scala: "Scala",
+  elixir: "Elixir",
+  clojure: "Clojure",
+  haskell: "Haskell",
+  ocaml: "OCaml",
+  zig: "Zig",
+  nim: "Nim",
+  dart: "Dart",
+  vue: "Vue",
+  svelte: "Svelte",
+  astro: "Astro",
+  prisma: "Prisma",
+  terraform: "Terraform",
+  tf: "Terraform",
+  proto: "Protobuf",
+  protobuf: "Protobuf",
+}
+
+function getLangDisplay(lang: string): string {
+  return LANG_DISPLAY[lang.toLowerCase()] ?? lang
 }
 
 // ── Parse language from className ───────────────────────────────────────────
 
 function parseLang(className: string | undefined): string | null {
   if (!className) return null
-  const match = className.match(/language-(\w+)/)
+  const match = className.match(/language-(\S+)/)
   return match ? match[1] : null
+}
+
+// ── Copy button ─────────────────────────────────────────────────────────────
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(text).then(
+      () => {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      },
+      () => {
+        // Clipboard access denied — silently ignore
+      }
+    )
+  }, [text])
+
+  return (
+    <button
+      onClick={handleCopy}
+      className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors px-1.5 py-0.5 rounded hover:bg-white/5"
+      title="Copy code"
+      aria-label={copied ? "Copied" : "Copy code"}
+    >
+      {copied ? (
+        <>
+          <Check className="w-3 h-3 text-green-400" />
+          <span className="text-green-400">Copied</span>
+        </>
+      ) : (
+        <Copy className="w-3 h-3" />
+      )}
+    </button>
+  )
 }
 
 // ── MarkdownCodeBlock component ─────────────────────────────────────────────
@@ -42,10 +134,7 @@ export function MarkdownCodeBlock({ children, className, node: _node, ...rest }:
   if (isInline) {
     return (
       <code
-        className={cn(
-          "text-foreground bg-elevation-1 px-1 rounded text-[0.85em]",
-          className
-        )}
+        className="text-[0.9em] font-mono px-1.5 py-0.5 rounded-md bg-elevation-2 text-orange-600 dark:text-orange-300 border border-border/30"
         {...rest}
       >
         {children}
@@ -70,6 +159,8 @@ function HighlightedCodeBlock({
   const [tokens, setTokens] = useState<
     Array<Array<{ content: string; color?: string }>> | null
   >(null)
+  const [collapsed, setCollapsed] = useState(false)
+  const lineCount = code.split("\n").length
 
   useEffect(() => {
     if (!lang) {
@@ -85,27 +176,85 @@ function HighlightedCodeBlock({
     }
   }, [code, lang, isDark])
 
-  // Fallback: plain code block while Shiki loads or for unknown languages
-  if (!tokens) {
-    return (
-      <code className="block text-foreground" {...rest}>
-        {code}
-      </code>
-    )
-  }
+  const isLong = lineCount > 30
 
   return (
-    <code className="block" {...rest}>
-      {tokens.map((line, i) => (
-        <span key={i}>
-          {line.map((token, j) => (
-            <span key={j} style={{ color: token.color }}>
-              {token.content}
+    <div className="my-3 rounded-lg border border-border/50 bg-elevation-1 overflow-hidden">
+      {/* Header bar with language label + copy button */}
+      <div className="flex items-center justify-between px-3 py-1.5 bg-elevation-2/50 border-b border-border/30">
+        <div className="flex items-center gap-2">
+          {isLong && (
+            <button
+              onClick={() => setCollapsed(!collapsed)}
+              className="text-muted-foreground hover:text-foreground transition-colors"
+              aria-label={collapsed ? "Expand code" : "Collapse code"}
+            >
+              {collapsed ? (
+                <ChevronRight className="w-3.5 h-3.5" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5" />
+              )}
+            </button>
+          )}
+          {lang && (
+            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+              {getLangDisplay(lang)}
             </span>
-          ))}
-          {i < tokens.length - 1 && "\n"}
-        </span>
-      ))}
-    </code>
+          )}
+          {isLong && (
+            <span className="text-[10px] text-muted-foreground/60">
+              {lineCount} lines
+            </span>
+          )}
+        </div>
+        <CopyButton text={code} />
+      </div>
+
+      {/* Code content */}
+      {!collapsed && (
+        <div className="overflow-x-auto">
+          <pre className="p-3 text-[12px] leading-[1.6] font-mono m-0">
+            {tokens ? (
+              <code className="block" {...rest}>
+                {tokens.map((line, i) => (
+                  <span key={i} className="block">
+                    <span className="inline-block w-8 text-right mr-3 text-muted-foreground/30 select-none text-[11px]">
+                      {i + 1}
+                    </span>
+                    {line.map((token, j) => (
+                      <span key={j} style={{ color: token.color }}>
+                        {token.content}
+                      </span>
+                    ))}
+                  </span>
+                ))}
+              </code>
+            ) : (
+              <code className="block text-foreground/90" {...rest}>
+                {code.split("\n").map((line, i) => (
+                  <span key={i} className="block">
+                    <span className="inline-block w-8 text-right mr-3 text-muted-foreground/30 select-none text-[11px]">
+                      {i + 1}
+                    </span>
+                    {line || "\u00A0"}
+                  </span>
+                ))}
+              </code>
+            )}
+          </pre>
+        </div>
+      )}
+
+      {/* Collapsed indicator */}
+      {collapsed && (
+        <button
+          onClick={() => setCollapsed(false)}
+          className="w-full px-3 py-2 text-[11px] text-muted-foreground hover:text-foreground hover:bg-elevation-2/30 transition-colors text-left"
+          aria-label={`Expand ${lineCount} lines of code`}
+        >
+          Show {lineCount} lines...
+        </button>
+      )}
+    </div>
   )
 }

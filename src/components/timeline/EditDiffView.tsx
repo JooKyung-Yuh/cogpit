@@ -8,24 +8,9 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog"
-import type { BundledLanguage, ThemedToken } from "shiki"
+import type { ThemedToken } from "shiki"
 import { getHighlighter, ensureLang, getLangFromPath } from "@/lib/shiki"
-
-// ── Dark mode detection (reactive via MutationObserver) ─────────────────────
-
-function useIsDarkMode() {
-  const [isDark, setIsDark] = useState(
-    () => document.documentElement.classList.contains("dark")
-  )
-  useEffect(() => {
-    const el = document.documentElement
-    const update = () => setIsDark(el.classList.contains("dark"))
-    const obs = new MutationObserver(update)
-    obs.observe(el, { attributes: true, attributeFilter: ["class"] })
-    return () => obs.disconnect()
-  }, [])
-  return isDark
-}
+import { useIsDarkMode } from "@/hooks/useIsDarkMode"
 
 // ── Simple line-level diff (LCS-based) ─────────────────────────────────────
 
