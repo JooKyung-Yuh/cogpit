@@ -19,7 +19,7 @@ export interface SessionState {
   loadingMember: string | null
   mainView: "sessions" | "teams"
   selectedTeam: string | null
-  sidebarTab: "browse" | "teams"
+  sidebarTab: "browse" | "git" | "teams"
   mobileTab: MobileTab
   dashboardProject: string | null
   /** Top-level app mode: agent (single session) or team (multi-agent orchestra) */
@@ -43,7 +43,7 @@ export type SessionAction =
   | { type: "SET_CURRENT_MEMBER_NAME"; name: string | null }
   | { type: "GUARD_MOBILE_TAB"; hasSession: boolean; hasTeam: boolean }
   | { type: "SET_LOADING_MEMBER"; name: string | null }
-  | { type: "SET_SIDEBAR_TAB"; tab: "browse" | "teams" }
+  | { type: "SET_SIDEBAR_TAB"; tab: "browse" | "git" | "teams" }
   | { type: "SET_DASHBOARD_PROJECT"; dirName: string | null }
   | { type: "INIT_PENDING_SESSION"; dirName: string; isMobile: boolean }
   | { type: "FINALIZE_SESSION"; session: ParsedSession; source: SessionSource; isMobile: boolean }

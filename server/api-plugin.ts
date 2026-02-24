@@ -15,6 +15,7 @@ import { registerFileWatchRoutes } from "./routes/files-watch"
 import { registerSessionFileChangesRoutes } from "./routes/session-file-changes"
 import { registerEditorRoutes } from "./routes/editor"
 import { registerWorktreeRoutes } from "./routes/worktrees"
+import { registerGitRoutes } from "./routes/git"
 import { registerUsageRoutes } from "./routes/usage"
 import { registerOrchestraRoutes } from "./routes/orchestra"
 
@@ -67,6 +68,7 @@ export function sessionApiPlugin(): Plugin {
       registerSessionFileChangesRoutes(use)
       registerEditorRoutes(use)
       registerWorktreeRoutes(use)
+      registerGitRoutes(use)
       registerUsageRoutes(use)
       registerOrchestraRoutes(use)
     },
