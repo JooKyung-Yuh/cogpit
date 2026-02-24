@@ -9,6 +9,7 @@ import { AssistantText } from "./timeline/AssistantText"
 import { ToolCallCard, getToolBadgeStyle } from "./timeline/ToolCallCard"
 import { SubAgentPanel } from "./timeline/SubAgentPanel"
 import { BackgroundAgentPanel } from "./timeline/BackgroundAgentPanel"
+import { StreamingIndicator } from "./StreamingIndicator"
 import { TurnContextMenu } from "@/components/TurnContextMenu"
 import { BranchIndicator } from "@/components/BranchIndicator"
 import { UndoRedoBar } from "@/components/UndoRedoBar"
@@ -650,6 +651,11 @@ const TurnSection = memo(function TurnSection({
           }
           return elements
         })()}
+
+        {/* Streaming indicator — visible only on the last active turn */}
+        {isAgentActive && (
+          <StreamingIndicator turn={turn} />
+        )}
       </div>
     </div>
   )

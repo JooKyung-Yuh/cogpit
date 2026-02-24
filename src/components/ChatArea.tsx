@@ -1,15 +1,15 @@
-import { type RefObject, type Dispatch, useRef, useEffect, useState } from "react"
+import { type RefObject, type Dispatch, useRef, useEffect, useState, useCallback } from "react"
 import {
   Search,
   ChevronsDownUp,
   ChevronsUpDown,
-  ArrowDown,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ConversationTimeline } from "@/components/ConversationTimeline"
 import { StickyPromptBanner } from "@/components/StickyPromptBanner"
 import { PendingTurnPreview } from "@/components/PendingTurnPreview"
+import { ScrollToBottomButton } from "@/components/ScrollToBottomButton"
 import { ErrorBoundary } from "@/components/ErrorBoundary"
 import type { ParsedSession } from "@/lib/types"
 import type { SessionAction } from "@/hooks/useSessionState"
@@ -31,6 +31,7 @@ interface ChatAreaProps {
   canScrollUp: boolean
   canScrollDown: boolean
   handleScroll: () => void
+  scrollToBottomSmooth: () => void
   // Undo/redo
   undoRedo: ReturnType<typeof useUndoRedo>
   onOpenBranches: (turnIndex: number) => void
@@ -38,6 +39,8 @@ interface ChatAreaProps {
   // Pending message
   pendingMessage: string | null
   isConnected: boolean
+  /** SSE is receiving data — agent is actively running even if HTTP request finished */
+  isLive?: boolean
   // Callbacks
   onToggleExpandAll: () => void
 }
@@ -56,31 +59,76 @@ export function ChatArea({
   canScrollUp,
   canScrollDown,
   handleScroll,
+  scrollToBottomSmooth,
   undoRedo,
   onOpenBranches,
   onBranchFromHere,
   pendingMessage,
   isConnected,
+  isLive,
   onToggleExpandAll,
 }: ChatAreaProps) {
+  // Agent is active if HTTP request is in flight OR SSE is streaming data
+  const isAgentRunning = isConnected || !!isLive
   const connectedAtRef = useRef<number | null>(null)
   const [elapsedSec, setElapsedSec] = useState(0)
+  const [newResponseReady, setNewResponseReady] = useState(false)
+  const prevAgentRunningRef = useRef(isAgentRunning)
+  const prevTurnCountRef = useRef(session.turns.length)
 
   useEffect(() => {
-    if (!isConnected) {
+    if (!isAgentRunning) {
       connectedAtRef.current = null
       setElapsedSec(0)
       return
     }
-    connectedAtRef.current = Date.now()
-    setElapsedSec(0)
+    if (connectedAtRef.current === null) {
+      connectedAtRef.current = Date.now()
+    }
+    setElapsedSec(Math.floor((Date.now() - connectedAtRef.current) / 1000))
     const interval = setInterval(() => {
       if (connectedAtRef.current !== null) {
         setElapsedSec(Math.floor((Date.now() - connectedAtRef.current) / 1000))
       }
     }, 1000)
     return () => clearInterval(interval)
-  }, [isConnected])
+  }, [isAgentRunning])
+
+  const flashNewResponse = useCallback(() => {
+    setNewResponseReady(true)
+  }, [])
+
+  // Detect agent finished responding while user is scrolled up
+  useEffect(() => {
+    const wasRunning = prevAgentRunningRef.current
+    prevAgentRunningRef.current = isAgentRunning
+    if (wasRunning && !isAgentRunning && canScrollDown) {
+      flashNewResponse()
+    }
+  }, [isAgentRunning, canScrollDown, flashNewResponse])
+
+  // Detect new assistant turns arriving while user is scrolled up
+  useEffect(() => {
+    const turnCount = session.turns.length
+    if (turnCount > prevTurnCountRef.current && canScrollDown) {
+      // Check if the new turn has assistant content (not just a user message)
+      const lastTurn = session.turns[turnCount - 1]
+      if (lastTurn && (lastTurn.assistantText.length > 0 || lastTurn.toolCalls.length > 0)) {
+        flashNewResponse()
+      }
+    }
+    prevTurnCountRef.current = turnCount
+  }, [session.turns, canScrollDown, flashNewResponse])
+
+  // Clear notification when user scrolls to bottom
+  useEffect(() => {
+    if (!canScrollDown) setNewResponseReady(false)
+  }, [canScrollDown])
+
+  const scrollToBottom = useCallback(() => {
+    scrollToBottomSmooth()
+    setNewResponseReady(false)
+  }, [scrollToBottomSmooth])
 
   return (
     <div className={cn("relative", isMobile ? "flex flex-col flex-1 min-h-0" : "h-full")}>
@@ -142,7 +190,7 @@ export function ChatArea({
                   activeToolCallId={activeToolCallId}
                   searchQuery={searchQuery}
                   expandAll={expandAll}
-                  isAgentActive={isConnected}
+                  isAgentActive={isAgentRunning}
                   scrollContainerRef={chatScrollRef}
                   branchesAtTurn={undoRedo.branchesAtTurn}
                   onRestoreToHere={undoRedo.requestUndo}
@@ -159,7 +207,7 @@ export function ChatArea({
                 <PendingTurnPreview
                   message={pendingMessage}
                   turnNumber={session.turns.length + 1}
-                  elapsedSec={isConnected ? elapsedSec : undefined}
+                  elapsedSec={isAgentRunning ? elapsedSec : undefined}
                 />
               )}
               <div ref={scrollEndRef} />
@@ -172,15 +220,12 @@ export function ChatArea({
             canScrollDown ? "opacity-100" : "opacity-0"
           )}
         />
-        {/* Scroll to bottom button */}
         {canScrollDown && (
-          <button
-            onClick={() => scrollEndRef.current?.scrollIntoView({ behavior: "smooth" })}
-            className="absolute left-1/2 -translate-x-1/2 bottom-3 z-20 flex items-center justify-center w-8 h-8 rounded-full bg-elevation-3 border border-border/60 text-muted-foreground hover:text-foreground hover:bg-elevation-2 shadow-md transition-all"
-            aria-label="Scroll to bottom"
-          >
-            <ArrowDown className="size-4" />
-          </button>
+          <ScrollToBottomButton
+            onClick={scrollToBottom}
+            showLabel={newResponseReady}
+            isStreaming={isAgentRunning}
+          />
         )}
       </div>
     </div>

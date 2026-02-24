@@ -16,6 +16,11 @@ export function useChatScroll({ session, isLive, pendingMessage, clearPending, s
   const chatScrollOnNextRef = useRef(false)
   const prevTurnCountRef = useRef(0)
 
+  // Sticky-to-bottom: only disengage when user intentionally scrolls up.
+  // This prevents smooth-scroll race conditions from breaking auto-scroll.
+  const stickToBottomRef = useRef(true)
+  const prevScrollTopRef = useRef(0)
+
   const [canScrollUp, setCanScrollUp] = useState(false)
   const [canScrollDown, setCanScrollDown] = useState(false)
 
@@ -24,6 +29,7 @@ export function useChatScroll({ session, isLive, pendingMessage, clearPending, s
       const el = chatScrollRef.current
       if (el) el.scrollTop = el.scrollHeight
       chatIsAtBottomRef.current = true
+      stickToBottomRef.current = true
       chatScrollOnNextRef.current = false
     }
     // Scroll immediately for instant feedback
@@ -44,7 +50,7 @@ export function useChatScroll({ session, isLive, pendingMessage, clearPending, s
     const el = chatScrollRef.current
     if (!el) return
     const up = el.scrollTop > 10
-    const down = el.scrollHeight - el.scrollTop - el.clientHeight > 10
+    const down = el.scrollHeight - el.scrollTop - el.clientHeight > 30
     if (up !== canScrollUpRef.current) {
       canScrollUpRef.current = up
       setCanScrollUp(up)
@@ -58,8 +64,24 @@ export function useChatScroll({ session, isLive, pendingMessage, clearPending, s
   const handleScroll = useCallback(() => {
     const el = chatScrollRef.current
     if (!el) return
-    chatIsAtBottomRef.current =
-      el.scrollHeight - el.scrollTop - el.clientHeight < 50
+
+    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    chatIsAtBottomRef.current = distFromBottom < 50
+
+    // Detect user scrolling UP → disengage stick-to-bottom.
+    // Our programmatic scroll always sets scrollTop = scrollHeight (instant),
+    // which lands at distFromBottom ≈ 0. Any upward scroll after that is
+    // the user intentionally reading above, so disengage immediately.
+    const scrolledUp = el.scrollTop < prevScrollTopRef.current - 2
+    if (scrolledUp) {
+      stickToBottomRef.current = false
+    }
+    // User scrolled back to bottom → re-engage
+    if (distFromBottom < 30) {
+      stickToBottomRef.current = true
+    }
+    prevScrollTopRef.current = el.scrollTop
+
     updateScrollIndicators()
   }, [updateScrollIndicators])
 
@@ -81,6 +103,7 @@ export function useChatScroll({ session, isLive, pendingMessage, clearPending, s
       const el = chatScrollRef.current
       if (el) el.scrollTop = el.scrollHeight
       chatIsAtBottomRef.current = true
+      stickToBottomRef.current = true
       chatScrollOnNextRef.current = false
     }
     doScroll()
@@ -110,9 +133,13 @@ export function useChatScroll({ session, isLive, pendingMessage, clearPending, s
       if (pendingMessage) {
         clearPending()
       }
-      if (chatScrollOnNextRef.current || chatIsAtBottomRef.current) {
+      if (chatScrollOnNextRef.current || stickToBottomRef.current) {
         requestAnimationFrame(() => {
-          scrollEndRef.current?.scrollIntoView({ behavior: "smooth" })
+          const el = chatScrollRef.current
+          if (el) {
+            el.scrollTop = el.scrollHeight
+            chatIsAtBottomRef.current = true
+          }
         })
         chatScrollOnNextRef.current = false
       }
@@ -123,13 +150,26 @@ export function useChatScroll({ session, isLive, pendingMessage, clearPending, s
   // Live content → auto-scroll
   useEffect(() => {
     if (!session || !isLive) return
-    if (chatIsAtBottomRef.current) {
+    if (stickToBottomRef.current) {
       requestAnimationFrame(() => {
-        scrollEndRef.current?.scrollIntoView({ behavior: "smooth" })
+        const el = chatScrollRef.current
+        if (el) {
+          el.scrollTop = el.scrollHeight
+          chatIsAtBottomRef.current = true
+        }
       })
     }
     requestAnimationFrame(updateScrollIndicators)
   }, [session, isLive, updateScrollIndicators])
+
+  const scrollToBottomSmooth = useCallback(() => {
+    const el = chatScrollRef.current
+    if (!el) return
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" })
+    chatIsAtBottomRef.current = true
+    stickToBottomRef.current = true
+    chatScrollOnNextRef.current = false
+  }, [])
 
   return {
     chatScrollRef,
@@ -138,6 +178,7 @@ export function useChatScroll({ session, isLive, pendingMessage, clearPending, s
     canScrollDown,
     handleScroll,
     scrollToBottomInstant,
+    scrollToBottomSmooth,
     resetTurnCount,
   }
 }

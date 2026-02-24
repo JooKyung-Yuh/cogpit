@@ -78,7 +78,7 @@ export default function App() {
 
   // Stable callbacks
   const handleSidebarTabChange = useCallback(
-    (tab: "browse" | "teams") => dispatch({ type: "SET_SIDEBAR_TAB", tab }),
+    (tab: "browse" | "git" | "teams") => dispatch({ type: "SET_SIDEBAR_TAB", tab }),
     [dispatch]
   )
   const handleToggleSidebar = useCallback(() => setShowSidebar((p) => !p), [])
@@ -577,6 +577,7 @@ export default function App() {
         status={claudeChat.status}
         error={claudeChat.error}
         isConnected={claudeChat.isConnected}
+        isLive={isLive}
         onSend={claudeChat.sendMessage}
         onInterrupt={claudeChat.interrupt}
         onStopSession={handleStopSession}
@@ -602,6 +603,7 @@ export default function App() {
               creatingSession={creatingSession}
               onDuplicateSession={handleDuplicateSessionByPath}
               onDeleteSession={handleDeleteSession}
+              currentDirName={currentDirName}
               isMobile
             />
           )}
@@ -641,11 +643,13 @@ export default function App() {
                     canScrollUp={scroll.canScrollUp}
                     canScrollDown={scroll.canScrollDown}
                     handleScroll={scroll.handleScroll}
+                    scrollToBottomSmooth={scroll.scrollToBottomSmooth}
                     undoRedo={undoRedo}
                     onOpenBranches={handleOpenBranches}
                     onBranchFromHere={handleBranchFromHere}
                     pendingMessage={claudeChat.pendingMessage}
                     isConnected={claudeChat.isConnected}
+                    isLive={isLive}
                     onToggleExpandAll={handleToggleExpandAll}
                   />
                 </div>
@@ -785,7 +789,13 @@ export default function App() {
         onToggleWorktrees={() => setShowWorktrees((p) => !p)}
         onKillAll={handleKillAll}
         onOpenSettings={config.openConfigDialog}
-        onSetAppMode={(mode) => dispatch({ type: "SET_APP_MODE", mode })}
+        onSetAppMode={(mode) => {
+          dispatch({ type: "SET_APP_MODE", mode })
+          // When switching back to agent mode, scroll chat to bottom
+          if (mode === "agent") {
+            requestAnimationFrame(() => scroll.scrollToBottomInstant())
+          }
+        }}
       />
 
       <div className="flex flex-1 min-h-0 overflow-hidden">
@@ -801,6 +811,7 @@ export default function App() {
             creatingSession={creatingSession}
             onDuplicateSession={handleDuplicateSessionByPath}
             onDeleteSession={handleDeleteSession}
+            currentDirName={currentDirName}
           />
         )}
 
@@ -860,11 +871,13 @@ export default function App() {
                     canScrollUp={scroll.canScrollUp}
                     canScrollDown={scroll.canScrollDown}
                     handleScroll={scroll.handleScroll}
+                    scrollToBottomSmooth={scroll.scrollToBottomSmooth}
                     undoRedo={undoRedo}
                     onOpenBranches={handleOpenBranches}
                     onBranchFromHere={handleBranchFromHere}
                     pendingMessage={claudeChat.pendingMessage}
                     isConnected={claudeChat.isConnected}
+                    isLive={isLive}
                     onToggleExpandAll={handleToggleExpandAll}
                   />
                 </ResizablePanel>

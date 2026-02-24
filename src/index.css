@@ -446,6 +446,12 @@ html.electron .electron-drag {
   to { opacity: 1; transform: translate(-50%, 0); }
 }
 
+/* Streaming breathe — subtle opacity pulse on scroll-to-bottom button */
+@keyframes breathe {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
 /* Reduce motion for accessibility */
 @media (prefers-reduced-motion: reduce) {
   .panel-enter,
@@ -453,6 +459,9 @@ html.electron .electron-drag {
   .toast-enter,
   .fade-in,
   .live-pulse {
+    animation: none;
+  }
+  [class*="breathe"] {
     animation: none;
   }
   .transition-smooth {

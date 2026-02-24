@@ -19,6 +19,8 @@ interface ChatInputProps {
   status: ChatStatus
   error?: string
   isConnected?: boolean
+  /** SSE is receiving data — agent is actively running even if HTTP request finished */
+  isLive?: boolean
   onSend: (message: string, images?: Array<{ data: string; mediaType: string }>) => void
   onInterrupt?: () => void
   onStopSession?: () => void
@@ -36,11 +38,14 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, ChatInputProps>(functi
   status,
   error,
   isConnected,
+  isLive,
   onSend,
   onInterrupt,
   onStopSession,
   pendingInteraction,
 }, ref) {
+  // Agent is active if HTTP request is in flight OR SSE is streaming data
+  const isAgentRunning = isConnected || isLive
   const [text, setText] = useState("")
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>("idle")
   const [voiceProgress, setVoiceProgress] = useState(0)
@@ -53,20 +58,22 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, ChatInputProps>(functi
   const connectedAtRef = useRef<number | null>(null)
   const [elapsedSec, setElapsedSec] = useState(0)
   useEffect(() => {
-    if (!isConnected) {
+    if (!isAgentRunning) {
       connectedAtRef.current = null
       setElapsedSec(0)
       return
     }
-    connectedAtRef.current = Date.now()
-    setElapsedSec(0)
+    if (connectedAtRef.current === null) {
+      connectedAtRef.current = Date.now()
+    }
+    setElapsedSec(Math.floor((Date.now() - connectedAtRef.current) / 1000))
     const interval = setInterval(() => {
       if (connectedAtRef.current !== null) {
         setElapsedSec(Math.floor((Date.now() - connectedAtRef.current) / 1000))
       }
     }, 1000)
     return () => clearInterval(interval)
-  }, [isConnected])
+  }, [isAgentRunning])
 
   const addImageFiles = useCallback((files: FileList | File[]) => {
     const SUPPORTED_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"])
@@ -128,7 +135,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, ChatInputProps>(functi
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (e.key === "Escape" && isConnected && onInterrupt) {
+      if (e.key === "Escape" && isAgentRunning && onInterrupt) {
         e.preventDefault()
         onInterrupt()
         return
@@ -138,7 +145,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, ChatInputProps>(functi
         handleSubmit()
       }
     },
-    [handleSubmit, isConnected, onInterrupt]
+    [handleSubmit, isAgentRunning, onInterrupt]
   )
 
   const handleInput = useCallback(
@@ -337,7 +344,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, ChatInputProps>(functi
                 ? "Provide feedback to request changes..."
                 : isUserQuestion
                   ? "Type a custom response..."
-                  : isConnected
+                  : isAgentRunning
                     ? "Message... (Enter to send)"
                     : "Send a message... (Enter to send)"
             }
@@ -353,7 +360,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, ChatInputProps>(functi
               "transition-all duration-200"
             )}
           />
-          {isConnected && !isPlanApproval && !isUserQuestion && (
+          {isAgentRunning && !isPlanApproval && !isUserQuestion && (
             <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
               {elapsedSec > 0 && (
                 <span className="text-[10px] font-mono tabular-nums text-muted-foreground">
@@ -369,7 +376,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, ChatInputProps>(functi
         </div>
 
         {/* Interrupt button — sends Escape to Claude */}
-        {isConnected && (
+        {isAgentRunning && (
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -386,7 +393,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, ChatInputProps>(functi
         )}
 
         {/* Stop session — kills the server process */}
-        {isConnected && onStopSession && (
+        {isAgentRunning && onStopSession && (
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
