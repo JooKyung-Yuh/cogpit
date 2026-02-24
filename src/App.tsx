@@ -80,6 +80,19 @@ export default function App() {
   const handleOpenProjectSwitcher = useCallback(() => setShowProjectSwitcher(true), [])
   const handleCloseProjectSwitcher = useCallback(() => setShowProjectSwitcher(false), [])
   const handleToggleThemeSelector = useCallback(() => setShowThemeSelector((p) => !p), [])
+  const handleOpenTerminal = useCallback(() => {
+    // Prefer the real cwd from the loaded session; dirNameToPath is lossy for paths with hyphens
+    const projectPath = state.session?.cwd
+      ?? (state.sessionSource?.dirName ? dirNameToPath(state.sessionSource.dirName) : null)
+      ?? (state.pendingDirName ? dirNameToPath(state.pendingDirName) : null)
+      ?? (state.dashboardProject ? dirNameToPath(state.dashboardProject) : null)
+    if (!projectPath) return
+    authFetch("/api/open-terminal", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: projectPath }),
+    }).catch(() => {})
+  }, [state.session?.cwd, state.sessionSource?.dirName, state.pendingDirName, state.dashboardProject])
   const handleCloseThemeSelector = useCallback(() => setShowThemeSelector(false), [])
   const handleToggleExpandAll = useCallback(() => dispatch({ type: "TOGGLE_EXPAND_ALL" }), [dispatch])
   const handleSearchChange = useCallback((q: string) => dispatch({ type: "SET_SEARCH_QUERY", value: q }), [dispatch])
@@ -242,6 +255,7 @@ export default function App() {
     onToggleSidebar: handleToggleSidebar,
     onOpenProjectSwitcher: handleOpenProjectSwitcher,
     onOpenThemeSelector: handleToggleThemeSelector,
+    onOpenTerminal: handleOpenTerminal,
     onHistoryBack: sessionHistory.goBack,
     onHistoryForward: sessionHistory.goForward,
     onNavigateToSession: actions.handleDashboardSelect,
@@ -670,6 +684,7 @@ export default function App() {
               onModelChange={setSelectedModel}
               hasSettingsChanges={hasSettingsChanges}
               onApplySettings={handleApplySettings}
+              onLoadSession={actions.handleDashboardSelect}
             />
           )}
 
@@ -886,6 +901,7 @@ export default function App() {
             onModelChange={setSelectedModel}
             hasSettingsChanges={hasSettingsChanges}
             onApplySettings={handleApplySettings}
+            onLoadSession={actions.handleDashboardSelect}
           />
         )}
 
