@@ -105,10 +105,15 @@ export function GitBranchPanel({ defaultDirName }: GitBranchPanelProps) {
   selectedRef.current = selectedDirName
   const defaultRef = useRef(defaultDirName)
   defaultRef.current = defaultDirName
+  /** Whether the user has manually picked a project in the dropdown */
+  const userPickedRef = useRef(false)
 
-  // Sync selection when default changes (e.g. user loads a different session)
+  // Sync selection when default changes (e.g. user loads a different session),
+  // but only if the user hasn't manually picked a different project.
   useEffect(() => {
-    if (defaultDirName) setSelectedDirName(defaultDirName)
+    if (defaultDirName && !userPickedRef.current) {
+      setSelectedDirName(defaultDirName)
+    }
   }, [defaultDirName])
 
   // Fetch project list + detect active projects
@@ -206,6 +211,7 @@ export function GitBranchPanel({ defaultDirName }: GitBranchPanelProps) {
                   key={p.dirName}
                   onClick={() => {
                     setSelectedDirName(p.dirName)
+                    userPickedRef.current = true
                     setDropdownOpen(false)
                   }}
                   className={cn(
@@ -288,7 +294,7 @@ export function GitBranchPanel({ defaultDirName }: GitBranchPanelProps) {
                 </span>
               </CollapsibleTrigger>
               <CollapsibleContent>
-                <div className="p-2 space-y-1.5 border-b border-border/30">
+                <div className="py-1.5 pl-5 pr-2 space-y-1.5 border-b border-border/30">
                   {status.stagedFiles.length > 0 && (
                     <Collapsible defaultOpen>
                       <CollapsibleTrigger className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors group w-full px-1">
@@ -297,7 +303,7 @@ export function GitBranchPanel({ defaultDirName }: GitBranchPanelProps) {
                         <span>Staged ({status.stagedFiles.length})</span>
                       </CollapsibleTrigger>
                       <CollapsibleContent>
-                        <div className="mt-1 rounded-md border border-border/50 bg-elevation-1/50 p-1">
+                        <div className="mt-1 ml-1 rounded-md border border-border/50 bg-elevation-1/50 p-1">
                           {status.stagedFiles.map((f) => (
                             <FileStatusLine key={`s-${f.path}`} file={f} type="staged" />
                           ))}
@@ -314,7 +320,7 @@ export function GitBranchPanel({ defaultDirName }: GitBranchPanelProps) {
                         <span>Changed ({status.changedFiles.length})</span>
                       </CollapsibleTrigger>
                       <CollapsibleContent>
-                        <div className="mt-1 rounded-md border border-border/50 bg-elevation-1/50 p-1">
+                        <div className="mt-1 ml-1 rounded-md border border-border/50 bg-elevation-1/50 p-1">
                           {status.changedFiles.map((f) => (
                             <FileStatusLine key={`c-${f.path}`} file={f} type="changed" />
                           ))}
@@ -331,7 +337,7 @@ export function GitBranchPanel({ defaultDirName }: GitBranchPanelProps) {
                         <span>Untracked ({status.untrackedFiles.length})</span>
                       </CollapsibleTrigger>
                       <CollapsibleContent>
-                        <div className="mt-1 rounded-md border border-border/50 bg-elevation-1/50 p-1">
+                        <div className="mt-1 ml-1 rounded-md border border-border/50 bg-elevation-1/50 p-1">
                           {status.untrackedFiles.map((f) => (
                             <div key={f} className="flex items-center gap-2 text-[10px] font-mono py-0.5 px-1">
                               <span className="shrink-0 w-3 text-center text-muted-foreground">?</span>

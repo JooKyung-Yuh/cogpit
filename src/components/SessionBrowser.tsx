@@ -508,12 +508,10 @@ export const SessionBrowser = memo(function SessionBrowser({
           </div>
         )}
 
-        {/* Git tab */}
-        {sidebarTab === "git" && (
-          <div className="flex-1 min-h-0">
-            <GitBranchPanel defaultDirName={gitDefaultDirName} />
-          </div>
-        )}
+        {/* Git tab — keep mounted to preserve selection across tab switches */}
+        <div className={cn("flex-1 min-h-0", sidebarTab !== "git" && "hidden")}>
+          <GitBranchPanel defaultDirName={gitDefaultDirName} />
+        </div>
 
         {/* Teams tab */}
         {sidebarTab === "teams" && (
