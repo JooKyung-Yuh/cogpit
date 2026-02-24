@@ -1,6 +1,8 @@
 import { useState, useMemo, memo } from "react"
 import { User, ChevronDown, ChevronRight, Eye, EyeOff } from "lucide-react"
 import ReactMarkdown from "react-markdown"
+import remarkGfm from "remark-gfm"
+import { MarkdownCodeBlock } from "./MarkdownCodeBlock"
 import type { UserContent } from "@/lib/types"
 import { getUserMessageText, getUserMessageImages } from "@/lib/parser"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
@@ -89,7 +91,7 @@ export const UserMessage = memo(function UserMessage({ content, timestamp }: Use
 
         {visibleText && (
           <div className="prose dark:prose-invert prose-sm max-w-none text-foreground break-words overflow-hidden [&_pre]:bg-elevation-1 [&_pre]:rounded [&_pre]:p-2 [&_pre]:overflow-x-auto [&_code]:text-foreground [&_code]:bg-elevation-1 [&_code]:px-1 [&_code]:rounded [&_a]:text-blue-400">
-            <ReactMarkdown>{visibleText}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ code: MarkdownCodeBlock }}>{visibleText}</ReactMarkdown>
           </div>
         )}
         {displayText.length > 500 && (

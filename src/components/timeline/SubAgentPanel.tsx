@@ -3,6 +3,8 @@ import { Users, ChevronRight, ChevronDown, Brain, Cog } from "lucide-react"
 import { ToolCallCard } from "./ToolCallCard"
 import type { SubAgentMessage } from "@/lib/types"
 import ReactMarkdown from "react-markdown"
+import remarkGfm from "remark-gfm"
+import { MarkdownCodeBlock } from "./MarkdownCodeBlock"
 
 interface SubAgentPanelProps {
   messages: SubAgentMessage[]
@@ -123,7 +125,7 @@ function SubAgentMessageItem({
           <div className="flex gap-2 items-start">
             <Cog className="w-3.5 h-3.5 text-green-400 mt-0.5 shrink-0" />
             <div className="prose dark:prose-invert prose-xs max-w-none text-foreground text-xs break-words">
-              <ReactMarkdown>{message.text.join("\n\n")}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ code: MarkdownCodeBlock }}>{message.text.join("\n\n")}</ReactMarkdown>
             </div>
           </div>
         )}
