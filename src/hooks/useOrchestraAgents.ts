@@ -8,6 +8,8 @@ export interface OrchestraAgent {
   type: AgentType
   name: string
   role: string
+  model: string
+  systemPrompt: string
   tmuxSession: string
   projectPath: string
   status: "starting" | "running" | "stopped" | "error"
@@ -63,6 +65,10 @@ export function useOrchestraAgents() {
     projectPath: string
     name?: string
     role?: string
+    model?: string
+    systemPrompt?: string
+    enableTeams?: boolean
+    agentsJson?: string
   }) => {
     setLoading(true)
     try {

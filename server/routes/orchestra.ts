@@ -17,6 +17,8 @@ export interface OrchestraAgent {
   type: AgentType
   name: string
   role: string
+  model: string
+  systemPrompt: string
   tmuxSession: string
   projectPath: string
   status: "starting" | "running" | "stopped" | "error"
@@ -85,15 +87,45 @@ function sendToAgent(agent: OrchestraAgent, text: string) {
   })
 }
 
-function buildSpawnCommand(type: AgentType, projectPath: string): string {
+interface SpawnOptions {
+  type: AgentType
+  projectPath: string
+  model?: string
+  systemPrompt?: string
+  enableTeams?: boolean
+  /** Custom agents JSON string (Claude --agents flag) */
+  agentsJson?: string
+}
+
+function buildSpawnCommand({ type, projectPath, model, systemPrompt, enableTeams, agentsJson }: SpawnOptions): string {
+  const envPrefix = enableTeams && type === "claude"
+    ? "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 "
+    : ""
+  let cmd: string
   switch (type) {
     case "claude":
-      return `cd "${projectPath}" && claude --print`
+      cmd = `cd "${projectPath}" && ${envPrefix}claude --print`
+      break
     case "codex":
-      return `cd "${projectPath}" && codex`
+      cmd = `cd "${projectPath}" && codex`
+      break
     case "gemini":
-      return `cd "${projectPath}" && gemini`
+      cmd = `cd "${projectPath}" && gemini`
+      break
   }
+  if (model) {
+    cmd += ` --model ${model}`
+  }
+  if (systemPrompt) {
+    // Escape single quotes in the prompt for shell safety
+    const escaped = systemPrompt.replace(/'/g, "'\\''")
+    cmd += ` --append-system-prompt '${escaped}'`
+  }
+  if (agentsJson && type === "claude") {
+    const escaped = agentsJson.replace(/'/g, "'\\''")
+    cmd += ` --agents '${escaped}'`
+  }
+  return cmd
 }
 
 // ── JSON body parser ──────────────────────────────────────────────────────
@@ -139,6 +171,10 @@ export function registerOrchestraRoutes(use: UseFn) {
       const projectPath = body.projectPath as string
       const name = (body.name as string) || `${type}-agent`
       const role = (body.role as string) || "general"
+      const model = (body.model as string) || ""
+      const systemPrompt = (body.systemPrompt as string) || ""
+      const enableTeams = !!body.enableTeams
+      const agentsJson = (body.agentsJson as string) || ""
 
       if (!type || !projectPath) {
         res.statusCode = 400
@@ -154,7 +190,7 @@ export function registerOrchestraRoutes(use: UseFn) {
 
       const id = randomUUID().slice(0, 8)
       const tmuxSession = `cogpit-${type}-${id}`
-      const cmd = buildSpawnCommand(type, projectPath)
+      const cmd = buildSpawnCommand({ type, projectPath, model: model || undefined, systemPrompt: systemPrompt || undefined, enableTeams, agentsJson: agentsJson || undefined })
 
       // Create tmux session with the agent command
       spawn("tmux", ["new-session", "-d", "-s", tmuxSession, "-x", "200", "-y", "50", cmd], {
@@ -167,6 +203,8 @@ export function registerOrchestraRoutes(use: UseFn) {
         type,
         name,
         role,
+        model,
+        systemPrompt,
         tmuxSession,
         projectPath,
         status: "starting",

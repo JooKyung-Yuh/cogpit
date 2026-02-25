@@ -888,8 +888,8 @@ export default function App() {
                 state.session?.cwd
                 ?? (currentDirName ? dirNameToPath(currentDirName) : "")
               }
-              onSpawn={(type, projectPath, name, role) =>
-                orchestra.spawnAgent({ type, projectPath, name, role })
+              onSpawn={(type, projectPath, name, role, model, systemPrompt, enableTeams, agentsJson) =>
+                orchestra.spawnAgent({ type, projectPath, name, role, model, systemPrompt, enableTeams, agentsJson })
               }
               onSend={orchestra.sendMessage}
               onKill={orchestra.killAgent}

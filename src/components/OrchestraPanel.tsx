@@ -51,11 +51,33 @@ interface SentMessage {
   content: string
 }
 
+// ── Model options per agent type ─────────────────────────────────────────
+
+const MODEL_OPTIONS: Record<AgentType, Array<{ value: string; label: string }>> = {
+  claude: [
+    { value: "", label: "Default" },
+    { value: "claude-sonnet-4-6", label: "Sonnet 4.6" },
+    { value: "claude-opus-4-6", label: "Opus 4.6" },
+    { value: "claude-haiku-4-5-20251001", label: "Haiku 4.5" },
+  ],
+  codex: [
+    { value: "", label: "Default" },
+    { value: "o3", label: "o3" },
+    { value: "o4-mini", label: "o4-mini" },
+    { value: "codex-mini-latest", label: "codex-mini" },
+  ],
+  gemini: [
+    { value: "", label: "Default" },
+    { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
+    { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
+  ],
+}
+
 // ── Spawn Dialog ──────────────────────────────────────────────────────────
 
 interface SpawnDialogProps {
   defaultProjectPath?: string
-  onSpawn: (type: AgentType, projectPath: string, name: string, role: string) => void
+  onSpawn: (type: AgentType, projectPath: string, name: string, role: string, model: string, systemPrompt: string, enableTeams: boolean, agentsJson: string) => void
   onCancel: () => void
 }
 
@@ -64,16 +86,26 @@ function SpawnDialog({ defaultProjectPath, onSpawn, onCancel }: SpawnDialogProps
   const [projectPath, setProjectPath] = useState(defaultProjectPath ?? "")
   const [name, setName] = useState("")
   const [role, setRole] = useState("general")
+  const [model, setModel] = useState("")
+  const [systemPrompt, setSystemPrompt] = useState("")
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [enableTeams, setEnableTeams] = useState(false)
+  const [agentsJson, setAgentsJson] = useState("")
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     inputRef.current?.focus()
   }, [])
 
+  // Reset model when agent type changes
+  useEffect(() => {
+    setModel("")
+  }, [type])
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!projectPath.trim()) return
-    onSpawn(type, projectPath.trim(), name.trim() || `${type}-agent`, role)
+    onSpawn(type, projectPath.trim(), name.trim() || `${type}-agent`, role, model, systemPrompt.trim(), enableTeams, agentsJson.trim())
   }
 
   return (
@@ -109,7 +141,7 @@ function SpawnDialog({ defaultProjectPath, onSpawn, onCancel }: SpawnDialogProps
         className="w-full rounded-md border border-border/50 bg-elevation-1 px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-blue-500/50"
       />
 
-      {/* Name and role */}
+      {/* Name, role, and model */}
       <div className="flex gap-2">
         <input
           type="text"
@@ -129,7 +161,69 @@ function SpawnDialog({ defaultProjectPath, onSpawn, onCancel }: SpawnDialogProps
           <option value="reviewer">Reviewer</option>
           <option value="tester">Tester</option>
         </select>
+        <select
+          value={model}
+          onChange={(e) => setModel(e.target.value)}
+          className="rounded-md border border-border/50 bg-elevation-1 px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+        >
+          {MODEL_OPTIONS[type].map((opt) => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
       </div>
+
+      {/* Advanced toggle */}
+      <button
+        type="button"
+        onClick={() => setShowAdvanced(!showAdvanced)}
+        className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+      >
+        {showAdvanced ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+        Advanced options
+      </button>
+
+      {showAdvanced && (
+        <div className="space-y-2">
+          {/* System prompt */}
+          <textarea
+            value={systemPrompt}
+            onChange={(e) => setSystemPrompt(e.target.value)}
+            placeholder="System prompt (appended to default prompt)..."
+            rows={3}
+            className="w-full rounded-md border border-border/50 bg-elevation-1 px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-blue-500/50 resize-none"
+          />
+
+          {/* Custom agents JSON (Claude only) */}
+          {type === "claude" && (
+            <div className="space-y-1">
+              <label className="text-[10px] text-muted-foreground">Custom Agents JSON</label>
+              <textarea
+                value={agentsJson}
+                onChange={(e) => setAgentsJson(e.target.value)}
+                placeholder={'[{"name":"reviewer","model":"claude-haiku-4-5-20251001","prompt":"Review code for bugs"}]'}
+                rows={3}
+                className="w-full rounded-md border border-border/50 bg-elevation-1 px-2.5 py-1.5 text-xs font-mono text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-blue-500/50 resize-none"
+              />
+            </div>
+          )}
+
+          {/* Agent Teams toggle (Claude only) */}
+          {type === "claude" && (
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={enableTeams}
+                onChange={(e) => setEnableTeams(e.target.checked)}
+                className="rounded border-border/50 bg-elevation-1 text-blue-500 focus:ring-blue-500/50 h-3 w-3"
+              />
+              <span className="text-[11px] text-muted-foreground">
+                Enable Agent Teams
+                <span className="ml-1 text-[9px] text-amber-400/80">(experimental)</span>
+              </span>
+            </label>
+          )}
+        </div>
+      )}
 
       <div className="flex gap-2 justify-end">
         <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={onCancel}>
@@ -376,7 +470,7 @@ interface OrchestraPanelProps {
   routes: AgentRoute[]
   loading: boolean
   defaultProjectPath?: string
-  onSpawn: (type: AgentType, projectPath: string, name: string, role: string) => void
+  onSpawn: (type: AgentType, projectPath: string, name: string, role: string, model: string, systemPrompt: string, enableTeams: boolean, agentsJson: string) => void
   onSend: (agentId: string, message: string) => void
   onKill: (agentId: string) => void
   onRemove: (agentId: string) => void
@@ -406,8 +500,8 @@ export function OrchestraPanel({
   const [canScrollDown, setCanScrollDown] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const handleSpawn = useCallback((type: AgentType, projectPath: string, name: string, role: string) => {
-    onSpawn(type, projectPath, name, role)
+  const handleSpawn = useCallback((type: AgentType, projectPath: string, name: string, role: string, model: string, systemPrompt: string, enableTeams: boolean, agentsJson: string) => {
+    onSpawn(type, projectPath, name, role, model, systemPrompt, enableTeams, agentsJson)
     setShowSpawn(false)
   }, [onSpawn])
 
