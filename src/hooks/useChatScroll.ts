@@ -15,6 +15,8 @@ export function useChatScroll({ session, isLive, pendingMessage, clearPending, s
   const chatIsAtBottomRef = useRef(true)
   const chatScrollOnNextRef = useRef(false)
   const prevTurnCountRef = useRef(0)
+  // When set, the next sessionChangeKey scroll will go to top instead of bottom
+  const scrollToTopOnNextChangeRef = useRef(false)
 
   // Sticky-to-bottom: only disengage when user intentionally scrolls up.
   // This prevents smooth-scroll race conditions from breaking auto-scroll.
@@ -40,6 +42,11 @@ export function useChatScroll({ session, isLive, pendingMessage, clearPending, s
       // And once more after layout settles (virtualized lists, images, etc.)
       requestAnimationFrame(doScroll)
     })
+  }, [])
+
+  /** Request that the next session load scrolls to top instead of bottom */
+  const requestScrollToTop = useCallback(() => {
+    scrollToTopOnNextChangeRef.current = true
   }, [])
 
   // Avoid triggering rerenders when scroll indicators haven't actually changed
@@ -89,21 +96,27 @@ export function useChatScroll({ session, isLive, pendingMessage, clearPending, s
     prevTurnCountRef.current = count
   }, [])
 
-  // Session changed → force scroll to bottom after React renders new content
+  // Session changed → force scroll after React renders new content
   const prevSessionChangeKeyRef = useRef(sessionChangeKey)
   useEffect(() => {
     if (sessionChangeKey === prevSessionChangeKeyRef.current) return
     prevSessionChangeKeyRef.current = sessionChangeKey
 
-    // The DOM now has the new session content. Scroll aggressively:
-    // 1) Immediate (layout is committed)
-    // 2) Next frame (virtualizer may still be measuring)
-    // 3) After a short delay (covers lazy rendering, image loads, etc.)
+    const scrollToTop = scrollToTopOnNextChangeRef.current
+    scrollToTopOnNextChangeRef.current = false
+
     const doScroll = () => {
       const el = chatScrollRef.current
-      if (el) el.scrollTop = el.scrollHeight
-      chatIsAtBottomRef.current = true
-      stickToBottomRef.current = true
+      if (!el) return
+      if (scrollToTop) {
+        el.scrollTop = 0
+        chatIsAtBottomRef.current = false
+        stickToBottomRef.current = false
+      } else {
+        el.scrollTop = el.scrollHeight
+        chatIsAtBottomRef.current = true
+        stickToBottomRef.current = true
+      }
       chatScrollOnNextRef.current = false
     }
     doScroll()
@@ -179,6 +192,7 @@ export function useChatScroll({ session, isLive, pendingMessage, clearPending, s
     handleScroll,
     scrollToBottomInstant,
     scrollToBottomSmooth,
+    requestScrollToTop,
     resetTurnCount,
   }
 }

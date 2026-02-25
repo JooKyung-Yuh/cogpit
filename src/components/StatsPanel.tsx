@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, useEffect } from "react"
+import { useMemo, useState, useCallback, useEffect, useRef } from "react"
 import {
   AlertTriangle,
   Server,
@@ -30,7 +30,7 @@ import {
 import { cn, MODEL_OPTIONS } from "@/lib/utils"
 import { authFetch } from "@/lib/auth"
 import type { ParsedSession, Turn, ToolCall } from "@/lib/types"
-import { formatTokenCount, truncate } from "@/lib/format"
+import { formatTokenCount, truncate, parseSubAgentPath } from "@/lib/format"
 import { getUserMessageText, getToolColor } from "@/lib/parser"
 
 // ── Props ──────────────────────────────────────────────────────────────────
@@ -59,6 +59,10 @@ interface StatsPanelProps {
   onApplySettings?: () => Promise<void>
   /** Called when user clicks a background agent to open its session */
   onLoadSession?: (dirName: string, fileName: string) => void
+  /** Current session source for detecting sub-agent view */
+  sessionSource?: { dirName: string; fileName: string } | null
+  /** Background agents from useBackgroundAgents (passed from App to avoid double-polling) */
+  backgroundAgents?: BgAgent[]
 }
 
 // ── Token Usage Per Turn Chart ─────────────────────────────────────────────
@@ -599,7 +603,7 @@ function BackgroundServers({
   )
 }
 
-// ── Background Agents ─────────────────────────────────────────────────────
+// ── Agents Panel (background + inline sub-agents) ────────────────────────
 
 const AGENT_BADGE_COLORS = [
   "bg-indigo-500/15 text-indigo-300 border-indigo-500/30",
@@ -619,64 +623,127 @@ interface BgAgent {
   preview: string
 }
 
-function BackgroundAgents({
-  cwd,
-  onLoadSession,
-}: {
-  cwd: string
-  onLoadSession?: (dirName: string, fileName: string) => void
-}) {
-  const [agents, setAgents] = useState<BgAgent[]>([])
-
-  useEffect(() => {
-    if (!cwd) return
-
-    let cancelled = false
-
-    async function fetchAgents() {
-      try {
-        const res = await authFetch(
-          `/api/background-agents?cwd=${encodeURIComponent(cwd)}`
-        )
-        if (cancelled) return
-        if (res.ok) {
-          const data: BgAgent[] = await res.json()
-          setAgents(data)
-        }
-      } catch {
-        // ignore
+/** Extract inline sub-agent IDs and first text preview from session content blocks */
+function extractInlineAgents(session: ParsedSession): Array<{
+  agentId: string
+  preview: string
+  isBackground: boolean
+}> {
+  const seen = new Map<string, { preview: string; isBackground: boolean }>()
+  for (const turn of session.turns) {
+    for (const block of turn.contentBlocks) {
+      if (block.kind !== "sub_agent" && block.kind !== "background_agent") continue
+      for (const msg of block.messages) {
+        if (seen.has(msg.agentId)) continue
+        const preview = msg.text[0]?.split("\n").find((l) => l.trim())?.trim() ?? ""
+        seen.set(msg.agentId, { preview, isBackground: msg.isBackground })
       }
     }
+  }
+  return Array.from(seen.entries()).map(([agentId, info]) => ({
+    agentId,
+    ...info,
+  }))
+}
 
-    fetchAgents()
-    const interval = setInterval(fetchAgents, 5_000)
-    return () => {
-      cancelled = true
-      clearInterval(interval)
+function AgentsPanel({
+  session,
+  sessionSource,
+  bgAgents,
+  onLoadSession,
+}: {
+  session: ParsedSession
+  sessionSource?: { dirName: string; fileName: string } | null
+  bgAgents: BgAgent[]
+  onLoadSession?: (dirName: string, fileName: string) => void
+}) {
+  // Detect if we're currently viewing a sub-agent
+  const subAgentView = useMemo(() => {
+    if (!sessionSource) return null
+    const parsed = parseSubAgentPath(sessionSource.fileName)
+    if (!parsed) return null
+    return { ...parsed, dirName: sessionSource.dirName }
+  }, [sessionSource])
+
+  // Extract inline sub-agents from session content blocks
+  const currentInlineAgents = useMemo(() => extractInlineAgents(session), [session])
+
+  // Cache parent session's inline agents so they persist when navigating to sub-agents.
+  // When viewing the main session, update the cache. When viewing a sub-agent
+  // (whose session has no sub_agent content blocks), use the cached parent list.
+  const cachedInlineAgentsRef = useRef(currentInlineAgents)
+  useEffect(() => {
+    if (!subAgentView && currentInlineAgents.length > 0) {
+      cachedInlineAgentsRef.current = currentInlineAgents
     }
-  }, [cwd])
+  }, [subAgentView, currentInlineAgents])
+  const inlineAgents = subAgentView && currentInlineAgents.length === 0
+    ? cachedInlineAgentsRef.current
+    : currentInlineAgents
 
-  if (agents.length === 0) return null
+  // Determine the parent session ID for constructing sub-agent paths
+  const parentSessionId = useMemo(() => {
+    if (subAgentView) return subAgentView.parentSessionId
+    // If viewing main session, extract sessionId from fileName (e.g. "abc123.jsonl" -> "abc123")
+    if (sessionSource?.fileName) {
+      const match = sessionSource.fileName.match(/^([^/]+)\.jsonl$/)
+      if (match) return match[1]
+    }
+    return null
+  }, [subAgentView, sessionSource])
+
+  // Build combined list: background agents + inline-only sub-agents (deduplicated)
+  const inlineOnlyAgents = useMemo(() => {
+    const bgAgentIds = new Set(bgAgents.map((a) => a.agentId))
+    return inlineAgents.filter(
+      (a) => !a.isBackground && !bgAgentIds.has(a.agentId)
+    )
+  }, [bgAgents, inlineAgents])
+
+  const totalCount = bgAgents.length + inlineOnlyAgents.length
+  if (totalCount === 0) return null
+
+  // Determine which agent is currently being viewed
+  const currentAgentId = subAgentView?.agentId ?? null
 
   return (
     <section>
       <h3 className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
         <span className="h-3.5 w-0.5 rounded-full bg-blue-500/40" />
-        Background Agents ({agents.length})
+        Sub-Agents ({totalCount})
       </h3>
-      <div className="space-y-1.5">
-        {agents.map((agent, idx) => {
+
+      {/* Back to Main button when viewing a sub-agent */}
+      {subAgentView && onLoadSession && (
+        <button
+          onClick={() => onLoadSession(subAgentView.dirName, subAgentView.parentFileName)}
+          className="mb-2 flex w-full items-center gap-1.5 rounded border border-blue-500/30 bg-blue-500/10 px-2.5 py-1.5 text-[11px] font-medium text-blue-400 transition-colors hover:bg-blue-500/20 hover:border-blue-500/50"
+        >
+          <ChevronRight className="size-3 rotate-180" />
+          Back to Main Agent
+        </button>
+      )}
+
+      <div className="max-h-[280px] overflow-y-auto space-y-1.5 pr-0.5">
+        {/* Background agents */}
+        {bgAgents.map((agent, idx) => {
           const badgeColor = AGENT_BADGE_COLORS[idx % AGENT_BADGE_COLORS.length]
           const shortId = agent.agentId.length > 8 ? agent.agentId.slice(0, 8) : agent.agentId
           const preview = agent.preview
             ? agent.preview.split("\n").find((l) => l.trim())?.trim() ?? agent.agentId
             : agent.agentId
+          const isViewing = currentAgentId === agent.agentId
 
           return (
             <button
               key={agent.agentId}
               onClick={() => onLoadSession?.(agent.dirName, agent.fileName)}
-              className="w-full rounded border border-border elevation-2 depth-low px-2.5 py-2 text-left transition-colors hover:bg-elevation-3 disabled:cursor-default"
+              className={cn(
+                "w-full rounded border elevation-2 depth-low px-2.5 py-2 text-left transition-colors disabled:cursor-default",
+                isViewing
+                  ? "border-blue-500/50 bg-blue-500/10 ring-1 ring-blue-500/30"
+                  : "border-border hover:bg-elevation-3"
+              )}
               disabled={!onLoadSession}
             >
               <div className="flex items-center gap-1.5">
@@ -689,6 +756,10 @@ function BackgroundAgents({
                 >
                   {shortId}
                 </span>
+                <span className="text-[9px] text-violet-400/70 font-medium uppercase">bg</span>
+                {isViewing && (
+                  <span className="text-[9px] text-blue-400 font-medium">viewing</span>
+                )}
                 <span
                   className={cn(
                     "ml-auto inline-block size-1.5 rounded-full shrink-0",
@@ -700,6 +771,57 @@ function BackgroundAgents({
               {preview !== agent.agentId && (
                 <p className="mt-1 truncate text-[10px] text-muted-foreground leading-snug">
                   {preview}
+                </p>
+              )}
+            </button>
+          )
+        })}
+
+        {/* Inline sub-agents (non-background) */}
+        {inlineOnlyAgents.map((agent, idx) => {
+          const badgeColor = AGENT_BADGE_COLORS[(bgAgents.length + idx) % AGENT_BADGE_COLORS.length]
+          const shortId = agent.agentId.length > 8 ? agent.agentId.slice(0, 8) : agent.agentId
+          const isViewing = currentAgentId === agent.agentId
+
+          // Construct the session path for this sub-agent
+          const canNavigate = !!onLoadSession && !!parentSessionId && !!sessionSource
+          const handleClick = () => {
+            if (!canNavigate) return
+            onLoadSession!(
+              sessionSource!.dirName,
+              `${parentSessionId}/subagents/agent-${agent.agentId}.jsonl`
+            )
+          }
+
+          return (
+            <button
+              key={agent.agentId}
+              onClick={handleClick}
+              className={cn(
+                "w-full rounded border elevation-2 depth-low px-2.5 py-2 text-left transition-colors disabled:cursor-default",
+                isViewing
+                  ? "border-blue-500/50 bg-blue-500/10 ring-1 ring-blue-500/30"
+                  : "border-border hover:bg-elevation-3"
+              )}
+              disabled={!canNavigate}
+            >
+              <div className="flex items-center gap-1.5">
+                <Bot className="size-3 shrink-0 text-cyan-400" />
+                <span
+                  className={cn(
+                    "inline-flex items-center rounded border px-1.5 py-0 text-[10px] font-mono",
+                    badgeColor
+                  )}
+                >
+                  {shortId}
+                </span>
+                {isViewing && (
+                  <span className="text-[9px] text-blue-400 font-medium">viewing</span>
+                )}
+              </div>
+              {agent.preview && (
+                <p className="mt-1 truncate text-[10px] text-muted-foreground leading-snug">
+                  {agent.preview}
                 </p>
               )}
             </button>
@@ -895,6 +1017,8 @@ export function StatsPanel({
   hasSettingsChanges,
   onApplySettings,
   onLoadSession,
+  sessionSource,
+  backgroundAgents,
 }: StatsPanelProps) {
   const { turns } = session
 
@@ -1015,9 +1139,11 @@ export function StatsPanel({
           onServersChanged={onServersChanged}
         />
 
-        {/* Background Agents */}
-        <BackgroundAgents
-          cwd={session.cwd}
+        {/* Agents (background + inline sub-agents) */}
+        <AgentsPanel
+          session={session}
+          sessionSource={sessionSource}
+          bgAgents={backgroundAgents ?? []}
           onLoadSession={onLoadSession}
         />
 

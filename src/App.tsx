@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react"
-import { Loader2, AlertTriangle, RefreshCw, WifiOff, X, TerminalSquare, Code2, FolderSearch } from "lucide-react"
+import { Loader2, AlertTriangle, RefreshCw, WifiOff, X, TerminalSquare, Code2, FolderSearch, Bot } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { SessionBrowser } from "@/components/SessionBrowser"
 import { StatsPanel } from "@/components/StatsPanel"
@@ -45,8 +45,11 @@ import { useWorktrees } from "@/hooks/useWorktrees"
 import { useKillAll } from "@/hooks/useKillAll"
 import { useTodoProgress } from "@/hooks/useTodoProgress"
 import { useOrchestraAgents } from "@/hooks/useOrchestraAgents"
+import { useBackgroundAgents } from "@/hooks/useBackgroundAgents"
+import { useNotifications } from "@/hooks/useNotifications"
+import { useSlashSuggestions } from "@/hooks/useSlashSuggestions"
 import { parseSession, detectPendingInteraction } from "@/lib/parser"
-import { dirNameToPath, shortPath } from "@/lib/format"
+import { dirNameToPath, shortPath, parseSubAgentPath } from "@/lib/format"
 import type { ParsedSession } from "@/lib/types"
 import { authFetch } from "@/lib/auth"
 import { LoginScreen } from "@/components/LoginScreen"
@@ -139,6 +142,34 @@ export default function App() {
   // Live session streaming
   const { isLive, sseState } = useLiveSession(state.sessionSource, (updated) => {
     dispatch({ type: "UPDATE_SESSION", session: updated })
+  })
+
+  // Background agents (shared between notifications + StatsPanel)
+  const backgroundAgents = useBackgroundAgents(state.session?.cwd ?? null)
+
+  // Slash command/skill suggestions
+  const slashSuggestions = useSlashSuggestions(state.session?.cwd)
+
+  // Notification sound setting
+  const [notificationSoundEnabled, setNotificationSoundEnabled] = useState(true)
+  useEffect(() => {
+    authFetch("/api/config")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.notificationSound !== undefined) {
+          setNotificationSoundEnabled(data.notificationSound !== false)
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  // Desktop notifications for session idle, agent completion, permission prompts
+  useNotifications({
+    isLive,
+    sessionLabel: state.session?.slug || state.session?.sessionId?.slice(0, 12) || null,
+    backgroundAgents,
+    pendingInteraction,
+    soundEnabled: notificationSoundEnabled,
   })
 
   // Permissions management
@@ -449,6 +480,31 @@ export default function App() {
     ? `${state.sessionSource.dirName}/${state.sessionSource.fileName}`
     : null
 
+  // Navigate back to parent session when viewing a sub-agent
+  const subAgentInfo = state.sessionSource ? parseSubAgentPath(state.sessionSource.fileName) : null
+  const isSubAgentView = subAgentInfo !== null
+
+  const handleBackToMain = useCallback(() => {
+    if (!state.sessionSource || !subAgentInfo) return
+    actions.handleDashboardSelect(state.sessionSource.dirName, subAgentInfo.parentFileName)
+  }, [state.sessionSource, subAgentInfo, actions.handleDashboardSelect])
+
+  // Load a session — sub-agent sessions scroll to top, others scroll to bottom
+  const handleLoadSessionScrollAware = useCallback((dirName: string, fileName: string) => {
+    if (parseSubAgentPath(fileName)) {
+      scroll.requestScrollToTop()
+    }
+    actions.handleDashboardSelect(dirName, fileName)
+  }, [scroll.requestScrollToTop, actions.handleDashboardSelect])
+
+  // Read-only banner shown when viewing a sub-agent session (replaces chat input)
+  const subAgentReadOnlyNode = isSubAgentView ? (
+    <div className="shrink-0 flex items-center justify-center gap-2 border-t border-border/50 bg-elevation-1 px-4 py-2.5">
+      <Bot className="size-3.5 text-muted-foreground" />
+      <span className="text-xs text-muted-foreground">Viewing sub-agent session (read-only)</span>
+    </div>
+  ) : null
+
   // Collect all error messages for toast display
   const activeError = actions.loadError || createError || null
   const clearActiveError = actions.loadError ? actions.clearLoadError : createError ? clearCreateError : undefined
@@ -582,6 +638,9 @@ export default function App() {
         onInterrupt={claudeChat.interrupt}
         onStopSession={handleStopSession}
         pendingInteraction={pendingInteraction}
+        slashSuggestions={slashSuggestions.suggestions}
+        slashSuggestionsLoading={slashSuggestions.loading}
+        expandCommand={slashSuggestions.expandCommand}
       />
     </div>
   )
@@ -628,6 +687,7 @@ export default function App() {
                     onNewSession={handleNewSession}
                     onDuplicateSession={handleDuplicateSession}
                     onOpenTerminal={handleOpenTerminal}
+                    onBackToMain={isSubAgentView ? handleBackToMain : undefined}
                   />
                   <ChatArea
                     session={state.session}
@@ -707,7 +767,9 @@ export default function App() {
               onModelChange={setSelectedModel}
               hasSettingsChanges={hasSettingsChanges}
               onApplySettings={handleApplySettings}
-              onLoadSession={actions.handleDashboardSelect}
+              onLoadSession={handleLoadSessionScrollAware}
+              sessionSource={state.sessionSource}
+              backgroundAgents={backgroundAgents}
             />
           )}
 
@@ -751,7 +813,7 @@ export default function App() {
         {state.mobileTab === "chat" && (state.session || state.pendingDirName) && state.mainView !== "teams" && (
           <>
             {todoProgress && <TodoProgressPanel progress={todoProgress} />}
-            {chatInputNode}
+            {subAgentReadOnlyNode || chatInputNode}
           </>
         )}
 
@@ -853,6 +915,7 @@ export default function App() {
                 onNewSession={handleNewSession}
                 onDuplicateSession={handleDuplicateSession}
                 onOpenTerminal={handleOpenTerminal}
+                onBackToMain={isSubAgentView ? handleBackToMain : undefined}
               />
 
               <ResizablePanelGroup orientation="horizontal" className="flex-1 min-h-0">
@@ -893,7 +956,7 @@ export default function App() {
               </ResizablePanelGroup>
 
               {todoProgress && <TodoProgressPanel progress={todoProgress} />}
-              {chatInputNode}
+              {subAgentReadOnlyNode || chatInputNode}
             </div>
           ) : state.pendingDirName ? (
             <div className="flex flex-1 min-h-0">
@@ -992,7 +1055,9 @@ export default function App() {
             onModelChange={setSelectedModel}
             hasSettingsChanges={hasSettingsChanges}
             onApplySettings={handleApplySettings}
-            onLoadSession={actions.handleDashboardSelect}
+            onLoadSession={handleLoadSessionScrollAware}
+            sessionSource={state.sessionSource}
+            backgroundAgents={backgroundAgents}
           />
         )}
 
@@ -1022,7 +1087,18 @@ export default function App() {
         open={config.showConfigDialog}
         currentPath={config.claudeDir ?? ""}
         onClose={config.handleCloseConfigDialog}
-        onSaved={config.handleConfigSaved}
+        onSaved={(newPath: string) => {
+          config.handleConfigSaved(newPath)
+          // Refresh notification sound setting after config save
+          authFetch("/api/config")
+            .then((res) => res.json())
+            .then((data) => {
+              if (data?.notificationSound !== undefined) {
+                setNotificationSoundEnabled(data.notificationSound !== false)
+              }
+            })
+            .catch(() => {})
+        }}
       />
 
       <ProjectSwitcherModal

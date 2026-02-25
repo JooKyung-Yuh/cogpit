@@ -62,6 +62,10 @@ export const LiveSessions = memo(function LiveSessions({ activeSessionKey, onSel
   const debouncedSearchRef = useRef(debouncedSearch)
   debouncedSearchRef.current = debouncedSearch
 
+  // Track recently-completed sessions for visual indicator
+  const [recentlyCompleted, setRecentlyCompleted] = useState<Set<string>>(new Set())
+  const prevActiveRef = useRef<Set<string>>(new Set())
+
   // Debounce search input
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300)
@@ -94,6 +98,36 @@ export const LiveSessions = memo(function LiveSessions({ activeSessionKey, onSel
       setSessions(sessData)
       setProcesses(procData)
       setFetchError(null)
+
+      // Detect sessions that just completed (had process → no process)
+      const procSessionIds = new Set(
+        (procData as RunningProcess[])
+          .filter((p) => p.sessionId)
+          .map((p) => p.sessionId!)
+      )
+      const currentActive = new Set(
+        (sessData as ActiveSessionInfo[])
+          .filter((s) => procSessionIds.has(s.sessionId))
+          .map((s) => s.sessionId)
+      )
+      const newlyCompleted = new Set<string>()
+      for (const id of prevActiveRef.current) {
+        if (!currentActive.has(id)) {
+          newlyCompleted.add(id)
+        }
+      }
+      if (newlyCompleted.size > 0) {
+        setRecentlyCompleted((prev) => new Set([...prev, ...newlyCompleted]))
+        // Auto-clear after 30s
+        setTimeout(() => {
+          setRecentlyCompleted((prev) => {
+            const next = new Set(prev)
+            for (const id of newlyCompleted) next.delete(id)
+            return next
+          })
+        }, 30_000)
+      }
+      prevActiveRef.current = currentActive
     } catch (err) {
       if (ac.signal.aborted) return
       setFetchError(err instanceof Error ? err.message : "Failed to load data")
@@ -290,6 +324,8 @@ export const LiveSessions = memo(function LiveSessions({ activeSessionKey, onSel
                         <span className="absolute inline-flex h-2.5 w-2.5 animate-ping rounded-full bg-green-400 opacity-75" />
                         <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
                       </>
+                    ) : recentlyCompleted.has(s.sessionId) ? (
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
                     ) : (
                       <span className="relative inline-flex h-2 w-2 rounded-full bg-muted-foreground" />
                     )}
