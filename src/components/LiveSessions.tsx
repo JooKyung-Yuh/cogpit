@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, memo } from "react"
-import { Loader2, RefreshCw, GitBranch, MessageSquare, Activity, X, Cpu, HardDrive, AlertTriangle, Search } from "lucide-react"
+import { Loader2, RefreshCw, GitBranch, MessageSquare, Activity, X, Cpu, HardDrive, AlertTriangle, Search, Pin } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -46,9 +46,11 @@ interface LiveSessionsProps {
   onSelectSession: (dirName: string, fileName: string) => void
   onDuplicateSession?: (dirName: string, fileName: string) => void
   onDeleteSession?: (dirName: string, fileName: string) => void
+  isPinned?: (dirName: string, fileName: string) => boolean
+  onTogglePin?: (dirName: string, fileName: string) => void
 }
 
-export const LiveSessions = memo(function LiveSessions({ activeSessionKey, onSelectSession, onDuplicateSession, onDeleteSession }: LiveSessionsProps) {
+export const LiveSessions = memo(function LiveSessions({ activeSessionKey, onSelectSession, onDuplicateSession, onDeleteSession, isPinned, onTogglePin }: LiveSessionsProps) {
   const [sessions, setSessions] = useState<ActiveSessionInfo[]>([])
   const [processes, setProcesses] = useState<RunningProcess[]>([])
   const [loading, setLoading] = useState(false)
@@ -296,11 +298,16 @@ export const LiveSessions = memo(function LiveSessions({ activeSessionKey, onSel
             </div>
           )}
 
-          {sessions.map((s) => {
+          {[...sessions].sort((a, b) => {
+            const ap = isPinned?.(a.dirName, a.fileName) ? 1 : 0
+            const bp = isPinned?.(b.dirName, b.fileName) ? 1 : 0
+            return bp - ap
+          }).map((s) => {
             const isActiveSession =
               activeSessionKey === `${s.dirName}/${s.fileName}`
             const proc = procBySession.get(s.sessionId)
             const hasProcess = matchedSessionIds.has(s.sessionId)
+            const pinned = isPinned?.(s.dirName, s.fileName) ?? false
 
             const sessionRow = (
               <div
@@ -333,6 +340,21 @@ export const LiveSessions = memo(function LiveSessions({ activeSessionKey, onSel
                   <span className="text-xs font-medium truncate flex-1 text-foreground">
                     {s.lastUserMessage || s.firstUserMessage || s.slug || truncate(s.sessionId, 16)}
                   </span>
+                  {onTogglePin && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onTogglePin(s.dirName, s.fileName) }}
+                      className={cn(
+                        "shrink-0 rounded p-0.5 transition-opacity",
+                        pinned
+                          ? "text-blue-400 opacity-100"
+                          : "text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-blue-400"
+                      )}
+                      title={pinned ? "Unpin session" : "Pin session"}
+                      aria-label={pinned ? "Unpin session" : "Pin session"}
+                    >
+                      <Pin className={cn("size-3", pinned && "fill-current")} />
+                    </button>
+                  )}
                   {hasProcess && proc ? (
                     <button
                       onClick={(e) => handleKill(proc.pid, e)}

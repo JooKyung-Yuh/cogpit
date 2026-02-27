@@ -23,6 +23,7 @@ import {
   Loader2,
   DollarSign,
   Copy,
+  Pin,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -80,6 +81,7 @@ interface SessionInfo {
 import { LiveSessions } from "@/components/LiveSessions"
 import { TeamsList } from "@/components/TeamsList"
 import { GitBranchPanel } from "@/components/GitBranchPanel"
+import { usePinnedSessions } from "@/hooks/usePinnedSessions"
 
 // ── Props ──────────────────────────────────────────────────────────────────
 
@@ -138,6 +140,7 @@ export const SessionBrowser = memo(function SessionBrowser({
   const [isLoading, setIsLoading] = useState(false)
   const [searchFilter, setSearchFilter] = useState("")
   const [fetchError, setFetchError] = useState<string | null>(null)
+  const { isPinned, togglePin } = usePinnedSessions()
 
   const gitDefaultDirName = currentDirName ?? selectedProject?.dirName ?? null
 
@@ -308,6 +311,8 @@ export const SessionBrowser = memo(function SessionBrowser({
           onSelectSession={loadLiveSession}
           onDuplicateSession={onDuplicateSession}
           onDeleteSession={onDeleteSession}
+          isPinned={isPinned}
+          onTogglePin={togglePin}
         />
       </div>
 
@@ -488,6 +493,9 @@ export const SessionBrowser = memo(function SessionBrowser({
                   hasMore={sessions.length < sessionsTotal}
                   isLoading={isLoading}
                   onLoadMore={handleLoadMoreSessions}
+                  dirName={selectedProject.dirName}
+                  isPinned={isPinned}
+                  onTogglePin={togglePin}
                 />
               )}
               {view === "detail" && session && !isMobile && (
@@ -606,6 +614,9 @@ const SessionsList = memo(function SessionsList({
   hasMore,
   isLoading,
   onLoadMore,
+  dirName,
+  isPinned,
+  onTogglePin,
 }: {
   sessions: SessionInfo[]
   filter: string
@@ -616,18 +627,31 @@ const SessionsList = memo(function SessionsList({
   hasMore?: boolean
   isLoading?: boolean
   onLoadMore?: () => void
+  dirName?: string
+  isPinned?: (dirName: string, fileName: string) => boolean
+  onTogglePin?: (dirName: string, fileName: string) => void
 }) {
   const filtered = useMemo(() => {
-    if (!filter) return sessions
-    const q = filter.toLowerCase()
-    return sessions.filter(
-      (s) =>
-        (s.firstUserMessage?.toLowerCase().includes(q)) ||
-        (s.slug?.toLowerCase().includes(q)) ||
-        (s.model?.toLowerCase().includes(q)) ||
-        s.sessionId.toLowerCase().includes(q)
-    )
-  }, [sessions, filter])
+    let list = sessions
+    if (filter) {
+      const q = filter.toLowerCase()
+      list = sessions.filter(
+        (s) =>
+          (s.firstUserMessage?.toLowerCase().includes(q)) ||
+          (s.slug?.toLowerCase().includes(q)) ||
+          (s.model?.toLowerCase().includes(q)) ||
+          s.sessionId.toLowerCase().includes(q)
+      )
+    }
+    if (dirName && isPinned) {
+      return [...list].sort((a, b) => {
+        const ap = isPinned(dirName, a.fileName) ? 1 : 0
+        const bp = isPinned(dirName, b.fileName) ? 1 : 0
+        return bp - ap
+      })
+    }
+    return list
+  }, [sessions, filter, dirName, isPinned])
 
   if (filtered.length === 0) {
     return (
@@ -641,6 +665,7 @@ const SessionsList = memo(function SessionsList({
     <ScrollArea className="h-full">
       <div className="flex flex-col gap-1.5 px-2 pb-3">
         {filtered.map((s) => {
+          const pinned = dirName ? isPinned?.(dirName, s.fileName) ?? false : false
           const row = (
             <button
               key={s.fileName}
@@ -664,6 +689,23 @@ const SessionsList = memo(function SessionsList({
                 <span className="text-xs font-medium text-foreground truncate flex-1">
                   {s.slug || truncate(s.sessionId, 16)}
                 </span>
+                {dirName && onTogglePin && (
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => { e.stopPropagation(); onTogglePin(dirName, s.fileName) }}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); onTogglePin(dirName, s.fileName) } }}
+                    className={cn(
+                      "shrink-0 rounded p-0.5 transition-opacity",
+                      pinned
+                        ? "text-blue-400 opacity-100"
+                        : "text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-blue-400"
+                    )}
+                    title={pinned ? "Unpin session" : "Pin session"}
+                  >
+                    <Pin className={cn("size-3", pinned && "fill-current")} />
+                  </span>
+                )}
                 {s.branchedFrom && <Copy className="size-2.5 text-purple-400 shrink-0" title="Duplicated session" />}
                 {s.model && (
                   <Badge

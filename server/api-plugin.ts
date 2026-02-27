@@ -19,6 +19,7 @@ import { registerGitRoutes } from "./routes/git"
 import { registerUsageRoutes } from "./routes/usage"
 import { registerOrchestraRoutes } from "./routes/orchestra"
 import { registerSlashSuggestionRoutes } from "./routes/slash-suggestions"
+import { registerSessionPinRoutes } from "./routes/session-pins"
 
 export function sessionApiPlugin(): Plugin {
   return {
@@ -73,6 +74,7 @@ export function sessionApiPlugin(): Plugin {
       registerUsageRoutes(use)
       registerOrchestraRoutes(use)
       registerSlashSuggestionRoutes(use)
+      registerSessionPinRoutes(use)
     },
   }
 }
