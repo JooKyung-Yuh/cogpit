@@ -851,13 +851,7 @@ export default function App() {
         onToggleWorktrees={() => setShowWorktrees((p) => !p)}
         onKillAll={handleKillAll}
         onOpenSettings={config.openConfigDialog}
-        onSetAppMode={(mode) => {
-          dispatch({ type: "SET_APP_MODE", mode })
-          // When switching back to agent mode, scroll chat to bottom
-          if (mode === "agent") {
-            requestAnimationFrame(() => scroll.scrollToBottomInstant())
-          }
-        }}
+        onSetAppMode={(mode) => dispatch({ type: "SET_APP_MODE", mode })}
       />
 
       <div className="flex flex-1 min-h-0 overflow-hidden">
@@ -878,26 +872,8 @@ export default function App() {
         )}
 
         <main className="relative flex-1 min-w-0 overflow-hidden flex flex-col">
-          {state.appMode === "team" ? (
-            <OrchestraPanel
-              agents={orchestra.agents}
-              outputs={orchestra.outputs}
-              routes={orchestra.routes}
-              loading={orchestra.loading}
-              defaultProjectPath={
-                state.session?.cwd
-                ?? (currentDirName ? dirNameToPath(currentDirName) : "")
-              }
-              onSpawn={(type, projectPath, name, role, model, systemPrompt, enableTeams, agentsJson) =>
-                orchestra.spawnAgent({ type, projectPath, name, role, model, systemPrompt, enableTeams, agentsJson })
-              }
-              onSend={orchestra.sendMessage}
-              onKill={orchestra.killAgent}
-              onRemove={orchestra.removeAgent}
-              onAddRoute={orchestra.addRoute}
-              onRemoveRoute={orchestra.removeRoute}
-            />
-          ) : state.mainView === "teams" && state.selectedTeam ? (
+          {/* Agent view — always rendered in normal flow, never hidden */}
+          {state.appMode !== "team" && state.mainView === "teams" && state.selectedTeam ? (
             <TeamsDashboard
               teamName={state.selectedTeam}
               onBack={actions.handleBackFromTeam}
@@ -1036,6 +1012,30 @@ export default function App() {
               onDuplicateSession={handleDuplicateSessionByPath}
               onDeleteSession={handleDeleteSession}
             />
+          )}
+
+          {/* Orchestra panel — absolute overlay on top of agent view */}
+          {state.appMode === "team" && (
+            <div className="absolute inset-0 z-10 flex flex-col bg-elevation-0">
+              <OrchestraPanel
+                agents={orchestra.agents}
+                outputs={orchestra.outputs}
+                routes={orchestra.routes}
+                loading={orchestra.loading}
+                defaultProjectPath={
+                  state.session?.cwd
+                  ?? (currentDirName ? dirNameToPath(currentDirName) : "")
+                }
+                onSpawn={(type, projectPath, name, role, model, systemPrompt, enableTeams, agentsJson) =>
+                  orchestra.spawnAgent({ type, projectPath, name, role, model, systemPrompt, enableTeams, agentsJson })
+                }
+                onSend={orchestra.sendMessage}
+                onKill={orchestra.killAgent}
+                onRemove={orchestra.removeAgent}
+                onAddRoute={orchestra.addRoute}
+                onRemoveRoute={orchestra.removeRoute}
+              />
+            </div>
           )}
         </main>
 
